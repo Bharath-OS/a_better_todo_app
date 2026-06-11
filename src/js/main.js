@@ -12,7 +12,7 @@ document.getElementById('maximize-btn').onclick = async () => {
   try { await mainWin().toggleMaximize(); } catch (e) { console.error('maximize error:', e); }
 };
 document.getElementById('close-btn').onclick = async () => {
-  try { await mainWin().hide(); } catch (e) { console.error('hide error:', e); }
+  try { await window.__TAURI__.core.invoke('exit_app'); } catch (e) { console.error('exit error:', e); }
 };
 
 // ============ Sidebar ============

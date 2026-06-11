@@ -194,13 +194,35 @@ function bindEvents() {
 }
 
 // ============ Drag ============
-async function startDrag(e) {
+let dragStartPos = null;
+
+function startDrag(e) {
   if (e.target.closest('button')) return;
-  try {
-    await appWindow.startDragging();
-  } catch (e) {
-    console.error('drag error:', e);
+  dragStartPos = { x: e.screenX, y: e.screenY };
+  document.addEventListener('mousemove', onDragMove);
+  document.addEventListener('mouseup', stopDrag);
+}
+
+async function onDragMove(e) {
+  if (!dragStartPos) return;
+  const dx = e.screenX - dragStartPos.x;
+  const dy = e.screenY - dragStartPos.y;
+  if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+    document.removeEventListener('mousemove', onDragMove);
+    document.removeEventListener('mouseup', stopDrag);
+    dragStartPos = null;
+    try {
+      await appWindow.startDragging();
+    } catch (e) {
+      console.error('drag error:', e);
+    }
   }
+}
+
+function stopDrag() {
+  dragStartPos = null;
+  document.removeEventListener('mousemove', onDragMove);
+  document.removeEventListener('mouseup', stopDrag);
 }
 
 // ============ Restore Main Window ============

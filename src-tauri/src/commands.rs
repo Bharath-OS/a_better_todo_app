@@ -102,6 +102,12 @@ pub fn get_streak(db: State<DbState>) -> Result<StreakData, String> {
 }
 
 #[tauri::command]
+pub fn exit_app(app_handle: tauri::AppHandle) -> Result<(), String> {
+    app_handle.exit(0);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn reset_data(app_handle: tauri::AppHandle, db: State<DbState>) -> Result<(), String> {
     db.0.lock()
         .map_err(|e| e.to_string())?

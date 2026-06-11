@@ -361,3 +361,138 @@ impl Database {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    fn test_db() -> Database {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS tasks (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                period TEXT NOT NULL CHECK(period IN ('daily','weekly','quarterly','yearly')),
+                completed INTEGER NOT NULL DEFAULT 0,
+                completed_at TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                due_time TEXT,
+                notes TEXT,
+                recurring INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS daily_history (
+                date TEXT PRIMARY KEY,
+                total INTEGER NOT NULL DEFAULT 0,
+                completed INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );",
+        )
+        .unwrap();
+        Database {
+            conn: Mutex::new(conn),
+        }
+    }
+
+    #[test]
+    fn test_create_and_get_tasks() {
+        let db = test_db();
+        let task = db
+            .create_task("test-1", "Test task", "daily", None, None)
+            .unwrap();
+        assert_eq!(task.title, "Test task");
+        assert_eq!(task.period, "daily");
+        assert!(!task.completed);
+
+        let tasks = db.get_tasks(None).unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].title, "Test task");
+    }
+
+    #[test]
+    fn test_get_tasks_filtered_by_period() {
+        let db = test_db();
+        db.create_task("t1", "Daily task", "daily", None, None).unwrap();
+        db.create_task("t2", "Weekly task", "weekly", None, None).unwrap();
+
+        let daily = db.get_tasks(Some("daily")).unwrap();
+        assert_eq!(daily.len(), 1);
+        assert_eq!(daily[0].title, "Daily task");
+
+        let weekly = db.get_tasks(Some("weekly")).unwrap();
+        assert_eq!(weekly.len(), 1);
+        assert_eq!(weekly[0].title, "Weekly task");
+    }
+
+    #[test]
+    fn test_toggle_task() {
+        let db = test_db();
+        db.create_task("t1", "Togglable", "daily", None, None).unwrap();
+
+        db.toggle_task("t1").unwrap();
+        let tasks = db.get_tasks(Some("daily")).unwrap();
+        assert!(tasks[0].completed);
+
+        db.toggle_task("t1").unwrap();
+        let tasks = db.get_tasks(Some("daily")).unwrap();
+        assert!(!tasks[0].completed);
+    }
+
+    #[test]
+    fn test_update_task() {
+        let db = test_db();
+        db.create_task("t1", "Original", "daily", None, None).unwrap();
+
+        db.update_task("t1", Some("Updated"), None, None, None).unwrap();
+        let tasks = db.get_tasks(None).unwrap();
+        assert_eq!(tasks[0].title, "Updated");
+
+        db.update_task("t1", None, Some(true), None, None).unwrap();
+        let tasks = db.get_tasks(None).unwrap();
+        assert!(tasks[0].completed);
+    }
+
+    #[test]
+    fn test_delete_task() {
+        let db = test_db();
+        db.create_task("t1", "Delete me", "daily", None, None).unwrap();
+        assert_eq!(db.get_tasks(None).unwrap().len(), 1);
+
+        db.delete_task("t1").unwrap();
+        assert_eq!(db.get_tasks(None).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_settings_crud() {
+        let db = test_db();
+        let settings = db.get_settings().unwrap();
+        assert_eq!(settings.get("overlay_corner").unwrap(), "tr");
+
+        db.update_setting("overlay_corner", "bl").unwrap();
+        let settings = db.get_settings().unwrap();
+        assert_eq!(settings.get("overlay_corner").unwrap(), "bl");
+    }
+
+    #[test]
+    fn test_streak_empty() {
+        let db = test_db();
+        let streak = db.get_streak().unwrap();
+        assert_eq!(streak.current, 0);
+        assert_eq!(streak.best, 0);
+    }
+
+    #[test]
+    fn test_reset_data() {
+        let db = test_db();
+        db.create_task("t1", "Task", "daily", None, None).unwrap();
+        assert_eq!(db.get_tasks(None).unwrap().len(), 1);
+
+        db.reset_data().unwrap();
+        let tasks = db.get_tasks(None).unwrap();
+        assert!(tasks.len() >= 3);
+        assert!(tasks.iter().any(|t| t.title.contains("emails")));
+    }
+}
