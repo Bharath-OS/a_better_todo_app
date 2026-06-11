@@ -43,7 +43,7 @@ async function init() {
     console.error('overlay init error (non-fatal):', e);
   }
   updateDot();
-  updateStreakDisplay();
+  await updateStreakDisplay();
   updateTabCounts();
   bindEvents();
   applyOverlaySettings();
@@ -59,9 +59,10 @@ async function loadTasks() {
     renderTaskList();
     updateFooter();
   }
-  updateDot();
-  updateStreakDisplay();
-  updateTabCounts();
+    updateDot();
+    await updateStreakDisplay();
+    updateTabCounts();
+  }
 }
 
 // ============ State Machine ============
@@ -245,7 +246,7 @@ listen('settings-changed', async (event) => {
   const { key, value } = event.payload || {};
   if (key) settings[key] = value;
   if (!key) settings = await getSettings();
-  updateStreakDisplay();
+  await updateStreakDisplay();
   applyOverlaySettings();
   const w = state === 'expanded' ? PANEL_WIDTH : measurePillWidth();
   const h = state === 'expanded' ? PANEL_HEIGHT : PILL_HEIGHT;
@@ -348,19 +349,18 @@ function updateDot() {
   pillLabel.textContent = incomplete > 0 ? `${incomplete} left` : 'All done!';
 }
 
-function updateStreakDisplay() {
-  getStreak().then(s => {
-    const show = settings.show_streak === 'true';
-    if (show) {
-      pillStreak.style.display = 'inline';
-      pillStreakCount.textContent = s.current;
-      panelStreak.style.display = 'inline';
-      panelStreak.innerHTML = `&#128293; ${s.current}`;
-    } else {
-      pillStreak.style.display = 'none';
-      panelStreak.style.display = 'none';
-    }
-  });
+async function updateStreakDisplay() {
+  const s = await getStreak();
+  const show = settings.show_streak === 'true';
+  if (show) {
+    pillStreak.style.display = 'inline';
+    pillStreakCount.textContent = s.current;
+    panelStreak.style.display = 'inline';
+    panelStreak.innerHTML = `&#128293; ${s.current}`;
+  } else {
+    pillStreak.style.display = 'none';
+    panelStreak.style.display = 'none';
+  }
 }
 
 // ============ Task Operations ============
@@ -415,7 +415,7 @@ onTasksChanged(async () => {
     updateTabCounts();
   }
   updateDot();
-  updateStreakDisplay();
+  await updateStreakDisplay();
 });
 
 // ============ Utility ============
