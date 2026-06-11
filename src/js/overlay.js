@@ -104,7 +104,33 @@ async function setState(newState) {
 
 async function setWindowSize(w, h) {
   try {
-    await window.__TAURI__.core.invoke('resize_overlay', { width: w, height: h });
+    const monitor = await appWindow.currentMonitor();
+    const inset = 16;
+    let x = inset, y = inset;
+    if (monitor) {
+      const pos = monitor.position;
+      const sz = monitor.size;
+      const scale = monitor.scaleFactor;
+      const screenW = sz.width / scale;
+      const screenH = sz.height / scale;
+      const left = pos.x / scale;
+      const top = pos.y / scale;
+      const corner = settings.overlay_corner || 'tr';
+      if (corner === 'tr') {
+        x = left + screenW - w - inset;
+        y = top + inset;
+      } else if (corner === 'tl') {
+        x = left + inset;
+        y = top + inset;
+      } else if (corner === 'br') {
+        x = left + screenW - w - inset;
+        y = top + screenH - h - inset;
+      } else if (corner === 'bl') {
+        x = left + inset;
+        y = top + screenH - h - inset;
+      }
+    }
+    await window.__TAURI__.core.invoke('resize_overlay', { width: w, height: h, x, y });
   } catch (e) {
     console.error('window resize error:', e);
   }

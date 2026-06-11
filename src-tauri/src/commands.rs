@@ -102,7 +102,8 @@ pub fn get_streak(db: State<DbState>) -> Result<StreakData, String> {
 }
 
 #[tauri::command]
-pub fn resize_overlay(window: tauri::Window, width: f64, height: f64) -> Result<(), String> {
+pub fn resize_overlay(window: tauri::Window, width: f64, height: f64, x: f64, y: f64) -> Result<(), String> {
+    let _ = window.set_position(tauri::LogicalPosition::new(x, y));
     let _ = window.set_size(tauri::LogicalSize::new(width, height));
     Ok(())
 }
