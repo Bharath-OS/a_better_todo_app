@@ -326,8 +326,8 @@ async function renderSettings(container) {
           <label class="toggle-switch">
             <input type="checkbox" id="setting-streak" ${settings.show_streak === 'true' ? 'checked' : ''}>
             <div class="toggle-track"></div>
+            <div class="toggle-thumb"></div>
           </label>
-          <div class="toggle-thumb" id="streak-thumb"></div>
         </div>
       </div>
     </div>

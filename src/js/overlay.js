@@ -239,7 +239,9 @@ listen('settings-changed', async (event) => {
   if (!key) settings = await getSettings();
   updateStreakDisplay();
   applyOverlaySettings();
-  if (state === 'collapsed' || state === 'peek') {
+  if (state === 'expanded') {
+    await setWindowSize(PANEL_WIDTH, PANEL_HEIGHT);
+  } else {
     const w = measurePillWidth();
     await setWindowSize(w, PILL_HEIGHT);
   }
@@ -282,7 +284,10 @@ async function restoreMainWindow() {
   try {
     const all = await window.__TAURI__.window.getAllWindows();
     const main = all.find(w => w.label === mainWindowLabel);
-    if (main) {
+    if (!main) return;
+    const minimized = await main.isMinimized().catch(() => true);
+    const hidden = !(await main.isVisible().catch(() => false));
+    if (minimized || hidden) {
       await main.show();
       await main.setFocus();
     }
