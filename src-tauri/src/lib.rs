@@ -57,26 +57,33 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(move |app, _shortcut, event| {
-                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        if app.get_webview_window("quick-add").is_some() {
-                            return;
-                        }
-                        let _ = tauri::WebviewWindowBuilder::new(
-                            app,
-                            "quick-add",
-                            tauri::WebviewUrl::App("quick-add.html".into()),
-                        )
-                        .title("Quick Add")
-                        .decorations(false)
-                        .transparent(true)
-                        .always_on_top(true)
-                        .skip_taskbar(true)
-                        .inner_size(420.0, 140.0)
-                        .visible(true)
-                        .focused(true)
-                        .center()
-                        .build();
+                .with_handler(move |app, shortcut, event| {
+                    eprintln!("Shortcut event: key={:?} state={:?}", shortcut, event.state);
+                    if event.state != tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        return;
+                    }
+                    if app.get_webview_window("quick-add").is_some() {
+                        eprintln!("Quick-add window already exists, skipping");
+                        return;
+                    }
+                    eprintln!("Creating quick-add window...");
+                    match tauri::WebviewWindowBuilder::new(
+                        app,
+                        "quick-add",
+                        tauri::WebviewUrl::App("quick-add.html".into()),
+                    )
+                    .title("Quick Add")
+                    .decorations(false)
+                    .transparent(true)
+                    .always_on_top(true)
+                    .skip_taskbar(true)
+                    .inner_size(420.0, 114.0)
+                    .visible(true)
+                    .focused(true)
+                    .center()
+                    .build() {
+                        Ok(_) => eprintln!("Quick-add window created successfully"),
+                        Err(e) => eprintln!("Failed to create quick-add window: {:?}", e),
                     }
                 })
                 .build(),
@@ -88,37 +95,47 @@ pub fn run() {
                 .expect("Failed to get app data dir");
             let database =
                 Database::new(&app_dir).expect("Failed to initialize database");
+            let settings = database.get_settings().unwrap_or_default();
+            let hotkey = settings
+                .get("quick_add_hotkey")
+                .cloned()
+                .unwrap_or_else(|| "Ctrl+Alt+T".into());
             app.manage(DbState(std::sync::Mutex::new(database)));
 
             tray::setup_tray(app)?;
 
-            // Register global shortcut: Ctrl+Alt+T for quick-add
+            // Register global shortcut with stored hotkey
             let handle = app.handle().clone();
-            let _ = handle.global_shortcut().register("Ctrl+Alt+T");
+            if handle.global_shortcut().register(hotkey.as_str()).is_err() {
+                eprintln!("Failed to register hotkey '{}', falling back to Ctrl+Alt+T", hotkey);
+                let _ = handle.global_shortcut().register("Ctrl+Alt+T");
+            }
 
-            // Track main window focus and manage overlay lifecycle
+            // Manage overlay based on window state
             let app_handle = app.handle().clone();
-
             if let Some(main_window) = app.get_webview_window("main") {
+                let win_handle = app.handle().clone();
                 main_window.on_window_event(move |event| {
                     match event {
                         tauri::WindowEvent::CloseRequested { api, .. } => {
                             api.prevent_close();
-                            if let Some(window) = app_handle.get_webview_window("main") {
+                            if let Some(window) = win_handle.get_webview_window("main") {
                                 let _ = window.hide();
                             }
-                            create_overlay(&app_handle);
                         }
                         tauri::WindowEvent::Focused(_) => {
-                            update_overlay(&app_handle);
+                            update_overlay(&win_handle);
                         }
                         _ => {}
                     }
                 });
             }
 
-            // Initial check: if main is not visible/focused, create overlay
-            // (intentionally skipped — overlay lifecycle is driven by window events)
+            // One-shot initial check after window is fully initialized on the event loop
+            let init_handle = app.handle().clone();
+            let _ = app_handle.run_on_main_thread(move || {
+                update_overlay(&init_handle);
+            });
 
             Ok(())
         })

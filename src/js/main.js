@@ -339,9 +339,11 @@ async function renderSettings(container) {
 
     <div class="settings-card">
       <h3>Hotkeys</h3>
-      <div class="hotkey-grid">
-        <div class="hotkey-chip"><kbd>Win</kbd> + <kbd>T</kbd> Toggle overlay</div>
-        <div class="hotkey-chip"><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd> Quick add</div>
+      <div class="settings-row">
+        <span class="settings-label">Quick add</span>
+        <div class="settings-control">
+          <button class="hotkey-picker" id="hotkey-picker">${settings.quick_add_hotkey || 'Ctrl+Alt+T'}</button>
+        </div>
       </div>
     </div>
 
@@ -361,6 +363,14 @@ async function renderSettings(container) {
     updateSetting('hover_delay_ms', e.target.value);
   };
   document.getElementById('setting-streak').onchange = (e) => updateSetting('show_streak', e.target.checked ? 'true' : 'false');
+
+  // Hotkey picker
+  const hotkeyBtn = document.getElementById('hotkey-picker');
+  hotkeyBtn.onclick = () => {
+    hotkeyBtn.dataset.recording = 'true';
+    hotkeyBtn.textContent = 'Press shortcut...';
+    hotkeyBtn.classList.add('recording');
+  };
 }
 
 async function handleReset() {
@@ -400,6 +410,47 @@ function escHtml(str) {
   div.textContent = str;
   return div.innerHTML;
 }
+
+// ============ Hotkey Recorder ============
+// Convert e.code (physical key) to the format expected by tauri-plugin-global-shortcut
+function codeToShortcutKey(code) {
+  if (code.startsWith('Key')) return code.slice(3);         // KeyD -> D
+  if (code.startsWith('Digit')) return code.slice(5);       // Digit1 -> 1
+  // Named keys that match the plugin format
+  const named = ['Space','Enter','Escape','Tab',
+    'ArrowUp','ArrowDown','ArrowLeft','ArrowRight',
+    'Comma','Period','Semicolon','Quote','Backquote',
+    'Minus','Equal','Backslash','Slash','BracketLeft','BracketRight',
+    'F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12'];
+  if (named.includes(code)) return code;
+  return null;
+}
+
+document.addEventListener('keydown', (e) => {
+  const btn = document.getElementById('hotkey-picker');
+  if (!btn || !btn.dataset.recording) return;
+  e.preventDefault();
+
+  // Ignore modifier-only keys
+  if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
+
+  const mods = [];
+  if (e.ctrlKey) mods.push('Ctrl');
+  if (e.altKey) mods.push('Alt');
+  if (e.shiftKey) mods.push('Shift');
+  if (e.metaKey) mods.push('Meta');
+
+  if (mods.length === 0) return;
+
+  const key = codeToShortcutKey(e.code);
+  if (!key) return;
+
+  const hotkey = [...mods, key].join('+');
+  delete btn.dataset.recording;
+  btn.textContent = hotkey;
+  btn.classList.remove('recording');
+  updateSetting('quick_add_hotkey', hotkey);
+});
 
 // ============ Sync from other windows ============
 onTasksChanged(() => { renderContent(); });

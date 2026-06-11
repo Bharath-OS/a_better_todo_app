@@ -213,6 +213,9 @@ impl Database {
         if !map.contains_key("keep_on_top") {
             map.insert("keep_on_top".into(), "true".into());
         }
+        if !map.contains_key("quick_add_hotkey") {
+            map.insert("quick_add_hotkey".into(), "Ctrl+Alt+T".into());
+        }
         Ok(map)
     }
 

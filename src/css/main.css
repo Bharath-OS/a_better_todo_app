@@ -640,29 +640,33 @@
   background: #fff;
 }
 
-.hotkey-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.hotkey-chip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+.hotkey-picker {
+  padding: 6px 14px;
   background: var(--secondary);
+  border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 13px;
+  font-family: monospace;
+  color: var(--fg);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 
-.hotkey-chip kbd {
-  padding: 2px 6px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-size: 11px;
-  font-family: monospace;
+.hotkey-picker:hover {
+  background: var(--accent);
+  border-color: var(--primary);
+}
+
+.hotkey-picker.recording {
+  background: var(--accent);
+  border-color: var(--primary);
+  color: var(--accent-fg);
+  animation: pulse-border 0.8s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% { border-color: var(--primary); }
+  50% { border-color: var(--primary-glow); }
 }
 
 /* ============ Dialog ============ */

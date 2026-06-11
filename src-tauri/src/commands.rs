@@ -2,6 +2,7 @@ use crate::db::{Database, Task, StreakData, DailyHistory};
 use std::collections::HashMap;
 use tauri::{Emitter, Manager, State};
 use std::sync::Mutex;
+use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 pub struct DbState(pub Mutex<Database>);
 
@@ -83,6 +84,15 @@ pub fn update_setting(app_handle: tauri::AppHandle, db: State<DbState>, key: Str
         .map_err(|e| e.to_string())?
         .update_setting(&key, &value)
         .map_err(|e| e.to_string())?;
+
+    if key == "quick_add_hotkey" {
+        let _ = app_handle.global_shortcut().unregister_all();
+        match app_handle.global_shortcut().register(value.as_str()) {
+            Ok(_) => eprintln!("Hotkey '{}' registered successfully", value),
+            Err(e) => eprintln!("Failed to register hotkey '{}': {:?}", value, e),
+        }
+    }
+
     let _ = app_handle.emit("settings-changed", ());
     Ok(())
 }
