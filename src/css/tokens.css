@@ -3,7 +3,7 @@
   font-style: normal;
   font-weight: 300 700;
   font-display: swap;
-  src: url(assets/fonts/Inter-latin.woff2) format('woff2');
+  src: url(/assets/fonts/Inter-latin.woff2) format('woff2');
 }
 
 :root {
