@@ -10,7 +10,7 @@ pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let keep_on_top = MenuItemBuilder::with_id("keep_on_top", "Keep on top")
         .accelerator("CmdOrCtrl+T")
         .build(app)?;
-    let quit = MenuItemBuilder::with_id("quit", "Quit PTC").build(app)?;
+    let quit = MenuItemBuilder::with_id("quit", "Quit Todly").build(app)?;
 
     let menu = MenuBuilder::new(app)
         .item(&show)

@@ -36,7 +36,7 @@ pub struct Database {
 impl Database {
     pub fn new(app_dir: &Path) -> Result<Self> {
         std::fs::create_dir_all(app_dir).ok();
-        let db_path = app_dir.join("ptc.db");
+        let db_path = app_dir.join("todly.db");
         let conn = Connection::open(db_path)?;
         let db = Database {
             conn: Mutex::new(conn),

@@ -16,7 +16,7 @@ fn create_overlay(app_handle: &tauri::AppHandle) {
         "overlay",
         tauri::WebviewUrl::App("overlay.html".into()),
     )
-    .title("PTC Overlay")
+    .title("Todly Overlay")
     .decorations(false)
     .transparent(true)
     .always_on_top(true)

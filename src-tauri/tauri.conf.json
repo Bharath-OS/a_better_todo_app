@@ -1,7 +1,7 @@
 {
-  "productName": "Perpetual Task Companion",
+  "productName": "Todly",
   "version": "0.1.0",
-  "identifier": "com.ptc.app",
+  "identifier": "com.todly.app",
   "build": {
     "frontendDist": "../src",
     "devUrl": "http://localhost:1422",
