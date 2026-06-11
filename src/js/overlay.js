@@ -47,9 +47,7 @@ async function init() {
   updateTabCounts();
   bindEvents();
   applyOverlaySettings();
-  const w = measurePillWidth();
-  await setWindowSize(w, PILL_HEIGHT);
-  setState('peek');
+  await setState('collapsed');
 }
 
 // ============ Task Loading ============
@@ -91,7 +89,7 @@ async function setState(newState) {
     pillContainer.classList.add('state-peek');
     pillPeekExtras.style.display = 'flex';
     pillContainer.style.width = '';
-    pillContainer.style.opacity = '';
+    applyOverlaySettings();
     const w = measurePillWidth();
     await setWindowSize(w, PILL_HEIGHT);
   } else if (newState === 'expanded') {
@@ -238,7 +236,7 @@ function streakShown() {
 
 function applyOverlaySettings() {
   const opacity = parseFloat(settings.collapsed_opacity || '0.6');
-  pillContainer.style.opacity = state === 'collapsed' ? opacity : '';
+  pillContainer.style.opacity = state !== 'expanded' ? opacity : '';
 }
 
 listen('settings-changed', async (event) => {
