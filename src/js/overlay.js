@@ -15,6 +15,7 @@ const mainWindowLabel = 'main';
 
 // ============ DOM refs ============
 const pillContainer = document.getElementById('pill-container');
+const overlayApp = document.getElementById('overlay-app');
 const pillDrag = document.getElementById('pill-drag');
 const pillLabel = document.getElementById('pill-label');
 const pillDot = document.getElementById('pill-dot');
@@ -56,7 +57,7 @@ async function init() {
       const minimized = await main.isMinimized().catch(() => false);
       const visible = await main.isVisible().catch(() => true);
       if (!minimized && visible) {
-        document.body.style.display = 'none';
+        overlayApp.style.display = 'none';
         state = 'hidden';
         return;
       }
@@ -197,7 +198,7 @@ function bindEvents() {
     e.stopPropagation();
     await restoreMainWindow();
     setState('collapsed');
-    document.body.style.display = 'none';
+    overlayApp.style.display = 'none';
     state = 'hidden';
   });
 
@@ -457,11 +458,11 @@ async function syncMainWindowState() {
     const shouldShow = minimized || !visible;
 
     if (shouldShow && state === 'hidden') {
-      document.body.style.display = '';
+      overlayApp.style.display = '';
       state = 'collapsed';
       await setState('collapsed');
     } else if (!shouldShow && state !== 'hidden') {
-      document.body.style.display = 'none';
+      overlayApp.style.display = 'none';
       state = 'hidden';
     }
   } catch (e) {}
