@@ -5,7 +5,49 @@ mod tray;
 use commands::DbState;
 use db::Database;
 use tauri::Manager;
-use tauri::Emitter;
+fn create_overlay(app_handle: &tauri::AppHandle) {
+    if app_handle.get_webview_window("overlay").is_some() {
+        return;
+    }
+    let _ = tauri::WebviewWindowBuilder::new(
+        app_handle,
+        "overlay",
+        tauri::WebviewUrl::App("overlay.html".into()),
+    )
+    .title("PTC Overlay")
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .visible(true)
+    .focused(false)
+    .inner_size(168.0, 32.0)
+    .build();
+}
+
+fn destroy_overlay(app_handle: &tauri::AppHandle) {
+    if let Some(overlay) = app_handle.get_webview_window("overlay") {
+        let _ = overlay.close();
+    }
+}
+
+fn update_overlay(app_handle: &tauri::AppHandle) {
+    let show_overlay = {
+        if let Some(main) = app_handle.get_webview_window("main") {
+            let visible = main.is_visible().unwrap_or(true);
+            let minimized = main.is_minimized().unwrap_or(false);
+            let focused = main.is_focused().unwrap_or(true);
+            !(visible && !minimized && focused)
+        } else {
+            false
+        }
+    };
+    if show_overlay {
+        create_overlay(app_handle);
+    } else {
+        destroy_overlay(app_handle);
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -20,22 +62,11 @@ pub fn run() {
                 Database::new(&app_dir).expect("Failed to initialize database");
             app.manage(DbState(std::sync::Mutex::new(database)));
 
-            // Position overlay at top-right corner
-            if let Some(overlay) = app.get_webview_window("overlay") {
-                if let Some(monitor) = overlay.current_monitor().ok().flatten() {
-                    let size = monitor.size();
-                    let scale = monitor.scale_factor();
-                    let x = size.width as f64 / scale - 168.0 - 16.0;
-                    let y = 16.0;
-                    let _ = overlay.set_position(tauri::LogicalPosition::new(x, y));
-                }
-            }
-
             tray::setup_tray(app)?;
 
-            // Listen for window close events (hide instead of close)
-            // and emit lifecycle state changes to the overlay
+            // Track main window focus and manage overlay lifecycle
             let app_handle = app.handle().clone();
+
             if let Some(main_window) = app.get_webview_window("main") {
                 main_window.on_window_event(move |event| {
                     match event {
@@ -44,23 +75,18 @@ pub fn run() {
                             if let Some(window) = app_handle.get_webview_window("main") {
                                 let _ = window.hide();
                             }
-                            let _ = app_handle.emit("main-window-state", "hidden");
+                            create_overlay(&app_handle);
                         }
                         tauri::WindowEvent::Focused(_) => {
-                            if let Some(window) = app_handle.get_webview_window("main") {
-                                let hidden = !window.is_visible().unwrap_or(true);
-                                let minimized = window.is_minimized().unwrap_or(false);
-                                let state = if hidden || minimized { "hidden" } else { "visible" };
-                                let _ = app_handle.emit("main-window-state", state);
-                            }
+                            update_overlay(&app_handle);
                         }
                         _ => {}
                     }
                 });
             }
 
-            // Emit initial state after setup
-            let _ = app.handle().emit("main-window-state", "visible");
+            // Initial check: if main is not visible/focused, create overlay
+            update_overlay(app.handle());
 
             Ok(())
         })
@@ -77,6 +103,7 @@ pub fn run() {
             commands::reset_data,
             commands::resize_overlay,
             commands::exit_app,
+            commands::close_overlay_and_show_main,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

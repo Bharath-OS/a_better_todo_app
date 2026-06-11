@@ -168,6 +168,18 @@ pub async fn resize_overlay(app_handle: tauri::AppHandle, width: f64, height: f6
 }
 
 #[tauri::command]
+pub fn close_overlay_and_show_main(app_handle: tauri::AppHandle) -> Result<(), String> {
+    if let Some(main) = app_handle.get_webview_window("main") {
+        let _ = main.show();
+        let _ = main.set_focus();
+    }
+    if let Some(overlay) = app_handle.get_webview_window("overlay") {
+        let _ = overlay.close();
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub fn exit_app(app_handle: tauri::AppHandle) -> Result<(), String> {
     app_handle.exit(0);
     Ok(())

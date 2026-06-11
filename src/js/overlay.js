@@ -15,7 +15,6 @@ const mainWindowLabel = 'main';
 
 // ============ DOM refs ============
 const pillContainer = document.getElementById('pill-container');
-const overlayApp = document.getElementById('overlay-app');
 const pillDrag = document.getElementById('pill-drag');
 const pillLabel = document.getElementById('pill-label');
 const pillDot = document.getElementById('pill-dot');
@@ -50,34 +49,6 @@ async function init() {
   applyOverlaySettings();
   await setState('collapsed');
 }
-
-// ============ Main Window State Sync ============
-async function syncMainWindowState() {
-  try {
-    const all = await window.__TAURI__.window.getAllWindows();
-    const main = all.find(w => w.label === 'main');
-    if (!main) return;
-    const minimized = await main.isMinimized().catch(() => false);
-    const visible = await main.isVisible().catch(() => true);
-    setOverlayVisible(minimized || !visible);
-  } catch (e) {}
-}
-
-function setOverlayVisible(show) {
-  if (show && state === 'hidden') {
-    overlayApp.style.display = '';
-    state = 'collapsed';
-    setState('collapsed');
-  } else if (!show && state !== 'hidden') {
-    overlayApp.style.display = 'none';
-    state = 'hidden';
-  }
-}
-
-// Listen for lifecycle events from Rust
-listen('main-window-state', (event) => {
-  setOverlayVisible(event.payload === 'hidden');
-});
 
 // ============ Task Loading ============
 async function loadTasks() {
@@ -205,13 +176,14 @@ function bindEvents() {
     setState('collapsed');
   });
 
-  // Close button in peek — show main window AND collapse
+  // Close button in peek — show main window AND destroy overlay
   pillCloseBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
-    await restoreMainWindow();
-    setState('collapsed');
-    overlayApp.style.display = 'none';
-    state = 'hidden';
+    try {
+      await window.__TAURI__.core.invoke('close_overlay_and_show_main');
+    } catch (e) {
+      console.error('close_overlay_and_show_main error:', e);
+    }
   });
 
   // Tabs
@@ -311,23 +283,6 @@ function stopDrag() {
   dragStartPos = null;
   document.removeEventListener('mousemove', onDragMove);
   document.removeEventListener('mouseup', stopDrag);
-}
-
-// ============ Restore Main Window ============
-async function restoreMainWindow() {
-  try {
-    const all = await window.__TAURI__.window.getAllWindows();
-    const main = all.find(w => w.label === mainWindowLabel);
-    if (!main) return;
-    const minimized = await main.isMinimized().catch(() => true);
-    const hidden = !(await main.isVisible().catch(() => false));
-    if (minimized || hidden) {
-      await main.show();
-      await main.setFocus();
-    }
-  } catch (e) {
-    console.error('restoreMainWindow error:', e);
-  }
 }
 
 // ============ Task List Rendering ============
@@ -461,6 +416,3 @@ function escHtml(str) {
 
 // ============ Boot ============
 init();
-
-// Backup poll (events may be missed during rapid transitions)
-setInterval(syncMainWindowState, 2000);

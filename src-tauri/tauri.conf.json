@@ -21,18 +21,6 @@
         "center": true,
         "resizable": true,
         "decorations": false
-      },
-      {
-        "label": "overlay",
-        "title": "PTC Overlay",
-        "width": 168,
-        "height": 32,
-        "decorations": false,
-        "transparent": true,
-        "alwaysOnTop": true,
-        "skipTaskbar": true,
-        "visible": true,
-        "focus": false
       }
     ],
     "security": {
