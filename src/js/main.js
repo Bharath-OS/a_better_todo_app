@@ -3,17 +3,17 @@ let settings = {};
 let streakData = { current: 0, best: 0 };
 
 // ============ Title Bar ============
-async function hideMainShowOverlay() {
-  try {
-    await window.__TAURI__.window.getCurrentWindow().hide();
-  } catch (e) {
-    console.error('hide error:', e);
-  }
-}
+const mainWin = () => window.__TAURI__.window.getCurrentWindow();
 
-document.getElementById('minimize-btn').onclick = hideMainShowOverlay;
-document.getElementById('maximize-btn').onclick = () => window.__TAURI__.window.getCurrentWindow().toggleMaximize();
-document.getElementById('close-btn').onclick = hideMainShowOverlay;
+document.getElementById('minimize-btn').onclick = async () => {
+  try { await mainWin().minimize(); } catch (e) { console.error('minimize error:', e); }
+};
+document.getElementById('maximize-btn').onclick = async () => {
+  try { await mainWin().toggleMaximize(); } catch (e) { console.error('maximize error:', e); }
+};
+document.getElementById('close-btn').onclick = async () => {
+  try { await mainWin().hide(); } catch (e) { console.error('hide error:', e); }
+};
 
 // ============ Sidebar ============
 document.querySelectorAll('.nav-item').forEach(item => {

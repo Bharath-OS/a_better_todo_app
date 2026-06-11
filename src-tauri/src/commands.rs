@@ -1,6 +1,6 @@
 use crate::db::{Database, Task, StreakData, DailyHistory};
 use std::collections::HashMap;
-use tauri::State;
+use tauri::{Emitter, State};
 use std::sync::Mutex;
 
 pub struct DbState(pub Mutex<Database>);
@@ -15,6 +15,7 @@ pub fn get_tasks(db: State<DbState>, period: Option<String>) -> Result<Vec<Task>
 
 #[tauri::command]
 pub fn create_task(
+    app_handle: tauri::AppHandle,
     db: State<DbState>,
     title: String,
     period: String,
@@ -22,22 +23,27 @@ pub fn create_task(
     notes: Option<String>,
 ) -> Result<Task, String> {
     let id = uuid::Uuid::new_v4().to_string();
-    db.0.lock()
+    let task = db.0.lock()
         .map_err(|e| e.to_string())?
         .create_task(&id, &title, &period, due_time.as_deref(), notes.as_deref())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    let _ = app_handle.emit("tasks-changed", ());
+    Ok(task)
 }
 
 #[tauri::command]
-pub fn toggle_task(db: State<DbState>, id: String) -> Result<(), String> {
+pub fn toggle_task(app_handle: tauri::AppHandle, db: State<DbState>, id: String) -> Result<(), String> {
     db.0.lock()
         .map_err(|e| e.to_string())?
         .toggle_task(&id)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    let _ = app_handle.emit("tasks-changed", ());
+    Ok(())
 }
 
 #[tauri::command]
 pub fn update_task(
+    app_handle: tauri::AppHandle,
     db: State<DbState>,
     id: String,
     title: Option<String>,
@@ -48,15 +54,19 @@ pub fn update_task(
     db.0.lock()
         .map_err(|e| e.to_string())?
         .update_task(&id, title.as_deref(), completed, due_time.as_deref(), notes.as_deref())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    let _ = app_handle.emit("tasks-changed", ());
+    Ok(())
 }
 
 #[tauri::command]
-pub fn delete_task(db: State<DbState>, id: String) -> Result<(), String> {
+pub fn delete_task(app_handle: tauri::AppHandle, db: State<DbState>, id: String) -> Result<(), String> {
     db.0.lock()
         .map_err(|e| e.to_string())?
         .delete_task(&id)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    let _ = app_handle.emit("tasks-changed", ());
+    Ok(())
 }
 
 #[tauri::command]
@@ -92,9 +102,11 @@ pub fn get_streak(db: State<DbState>) -> Result<StreakData, String> {
 }
 
 #[tauri::command]
-pub fn reset_data(db: State<DbState>) -> Result<(), String> {
+pub fn reset_data(app_handle: tauri::AppHandle, db: State<DbState>) -> Result<(), String> {
     db.0.lock()
         .map_err(|e| e.to_string())?
         .reset_data()
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    let _ = app_handle.emit("tasks-changed", ());
+    Ok(())
 }

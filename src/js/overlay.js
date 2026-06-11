@@ -4,8 +4,7 @@ let activePeriod = 'daily';
 let tasks = [];
 let settings = {};
 let peekTimer = null;
-let isDragging = false;
-let dragOffset = { x: 0, y: 0 };
+
 
 const PILL_WIDTH = 168;
 const PILL_HEIGHT = 32;
@@ -197,32 +196,11 @@ function bindEvents() {
 // ============ Drag ============
 async function startDrag(e) {
   if (e.target.closest('button')) return;
-  isDragging = true;
-  const pos = await appWindow.outerPosition();
-  dragOffset.x = e.screenX - pos.x;
-  dragOffset.y = e.screenY - pos.y;
-  document.addEventListener('mousemove', onDrag);
-  document.addEventListener('mouseup', stopDrag);
-  // reduce opacity while dragging
-  if (state === 'collapsed' || state === 'peek') {
-    pillContainer.style.opacity = '0.9';
-  }
-}
-
-async function onDrag(e) {
-  if (!isDragging) return;
-  const newX = e.screenX - dragOffset.x;
-  const newY = e.screenY - dragOffset.y;
   try {
-    await appWindow.setPosition({ type: 'Logical', x: newX, y: newY });
-  } catch (_) {}
-}
-
-function stopDrag() {
-  isDragging = false;
-  pillContainer.style.opacity = '';
-  document.removeEventListener('mousemove', onDrag);
-  document.removeEventListener('mouseup', stopDrag);
+    await appWindow.startDragging();
+  } catch (e) {
+    console.error('drag error:', e);
+  }
 }
 
 // ============ Restore Main Window ============

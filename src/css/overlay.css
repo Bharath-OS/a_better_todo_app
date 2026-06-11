@@ -46,8 +46,6 @@ html, body {
   align-items: center;
   gap: 6px;
   height: 100%;
-  -webkit-app-region: drag;
-  app-region: drag;
 }
 
 .status-dot {
@@ -100,8 +98,6 @@ html, body {
   cursor: pointer;
   flex-shrink: 0;
   transition: all var(--transition-fast);
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
 }
 
 .pill-close-btn:hover {
@@ -136,8 +132,6 @@ html, body {
   font-size: 11px;
   color: var(--muted-fg);
   flex-shrink: 0;
-  -webkit-app-region: drag;
-  app-region: drag;
 }
 
 #panel-header .header-spacer {
@@ -155,8 +149,6 @@ html, body {
   cursor: pointer;
   border-radius: 4px;
   transition: background var(--transition-fast);
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
 }
 
 #collapse-btn:hover {
