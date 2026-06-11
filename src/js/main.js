@@ -401,5 +401,8 @@ function escHtml(str) {
   return div.innerHTML;
 }
 
+// ============ Sync from other windows ============
+onTasksChanged(() => { renderContent(); });
+
 // ============ Init ============
 renderContent();
