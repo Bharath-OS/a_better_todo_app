@@ -235,6 +235,15 @@ function applyOverlaySettings() {
 
 listen('settings-changed', async (event) => {
   const { key, value } = event.payload || {};
+
+  // Keys that affect overlay size/position need a full window recreate
+  if (key && ['overlay_corner', 'show_streak'].includes(key)) {
+    settings[key] = value;
+    applyOverlaySettings();
+    await window.__TAURI__.core.invoke('recreate_overlay');
+    return;
+  }
+
   if (key) settings[key] = value;
   if (!key) settings = await getSettings();
   updateStreakDisplay();
