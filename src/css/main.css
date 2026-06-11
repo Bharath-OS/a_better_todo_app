@@ -587,9 +587,12 @@
 
 .toggle-switch {
   position: relative;
+  display: inline-flex;
+  align-items: center;
   width: 36px;
   height: 20px;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .toggle-switch input {
@@ -600,12 +603,14 @@
   width: 100%;
   height: 100%;
   border-radius: 10px;
-  background: var(--border);
+  background: #d1d5db;
   transition: background var(--transition-fast);
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .toggle-switch input:checked + .toggle-track {
   background: var(--primary);
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.15);
 }
 
 .toggle-thumb {
@@ -615,13 +620,14 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: white;
-  transition: transform var(--transition-fast);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  background: #fff;
+  transition: transform var(--transition-fast), background var(--transition-fast);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
 }
 
 .toggle-switch input:checked ~ .toggle-thumb {
   transform: translateX(16px);
+  background: #fff;
 }
 
 .hotkey-grid {
