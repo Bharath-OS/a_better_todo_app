@@ -6,9 +6,7 @@ let settings = {};
 let peekTimer = null;
 
 
-const PILL_WIDTH = 168;
 const PILL_HEIGHT = 32;
-const PEEK_WIDTH = 204;
 const PANEL_WIDTH = 340;
 const PANEL_HEIGHT = 560;
 
@@ -48,11 +46,8 @@ async function init() {
   updateStreakDisplay();
   updateTabCounts();
   bindEvents();
-  try {
-    await setWindowSize(PILL_WIDTH, PILL_HEIGHT);
-  } catch (e) {
-    console.error('overlay setWindowSize error (non-fatal):', e);
-  }
+  const w = Math.max(pillContainer.offsetWidth, 60);
+  await setWindowSize(w, PILL_HEIGHT);
 }
 
 // ============ Task Loading ============
@@ -71,41 +66,37 @@ async function loadTasks() {
 async function setState(newState) {
   const prev = state;
   state = newState;
-  console.log('setState:', prev, '->', newState);
 
   // Clear peek timer
   if (peekTimer) { clearTimeout(peekTimer); peekTimer = null; }
 
+  // Leaving expanded — restore pill visibility before measuring
+  if (prev === 'expanded' && newState !== 'expanded') {
+    panelContainer.style.display = 'none';
+    pillContainer.style.display = 'flex';
+  }
+
   pillContainer.classList.remove('state-collapsed', 'state-peek', 'state-expanded');
+
   if (newState === 'collapsed') {
     pillContainer.classList.add('state-collapsed');
     pillPeekExtras.style.display = 'none';
-    pillContainer.style.width = PILL_WIDTH + 'px';
-    console.log('setState: calling setWindowSize(', PILL_WIDTH, PILL_HEIGHT, ')');
-    await setWindowSize(PILL_WIDTH, PILL_HEIGHT);
-    console.log('setState: setWindowSize done');
+    pillContainer.style.width = '';
+    const w = Math.max(pillContainer.offsetWidth, 60);
+    await setWindowSize(w, PILL_HEIGHT);
   } else if (newState === 'peek') {
     pillContainer.classList.add('state-peek');
     pillPeekExtras.style.display = 'flex';
-    pillContainer.style.width = PEEK_WIDTH + 'px';
-    console.log('setState: calling setWindowSize(', PEEK_WIDTH, PILL_HEIGHT, ')');
-    await setWindowSize(PEEK_WIDTH, PILL_HEIGHT);
-    console.log('setState: setWindowSize done');
+    pillContainer.style.width = '';
+    const w = Math.max(pillContainer.offsetWidth, 80);
+    await setWindowSize(w, PILL_HEIGHT);
   } else if (newState === 'expanded') {
     pillContainer.style.display = 'none';
     panelContainer.style.display = 'flex';
     pillContainer.classList.add('state-expanded');
-    console.log('setState: calling setWindowSize(', PANEL_WIDTH, PANEL_HEIGHT, ')');
     await setWindowSize(PANEL_WIDTH, PANEL_HEIGHT);
-    console.log('setState: setWindowSize done');
     renderTaskList();
     updateFooter();
-  }
-
-  // Leaving expanded
-  if (prev === 'expanded' && newState !== 'expanded') {
-    panelContainer.style.display = 'none';
-    pillContainer.style.display = 'flex';
   }
 }
 
@@ -148,7 +139,9 @@ async function setWindowSize(w, h) {
 function bindEvents() {
   // Pill hover -> peek (delayed)
   let hoverTimer = null;
+  let leaveTimer = null;
   pillContainer.addEventListener('mouseenter', () => {
+    if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null; }
     const delay = parseInt(settings.hover_delay_ms || 1200);
     hoverTimer = setTimeout(() => {
       if (state === 'collapsed') setState('peek');
@@ -156,7 +149,9 @@ function bindEvents() {
   });
   pillContainer.addEventListener('mouseleave', () => {
     if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
-    if (state === 'peek') setState('collapsed');
+    if (state === 'peek') {
+      leaveTimer = setTimeout(() => setState('collapsed'), 300);
+    }
   });
 
   // Pill click -> expanded
@@ -171,10 +166,11 @@ function bindEvents() {
     setState('collapsed');
   });
 
-  // Close button (peek + panel)
+  // Close button — show main window AND collapse overlay
   pillCloseBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
     await restoreMainWindow();
+    setState('collapsed');
   });
 
   // Tabs
