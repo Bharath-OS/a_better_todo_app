@@ -31,7 +31,6 @@
         "transparent": true,
         "alwaysOnTop": true,
         "skipTaskbar": true,
-        "resizable": false,
         "visible": true,
         "focus": false
       }

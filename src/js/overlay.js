@@ -104,6 +104,7 @@ async function setState(newState) {
 
 async function setWindowSize(w, h) {
     try {
+      await appWindow.setResizable(true);
       const monitor = await appWindow.currentMonitor();
       const inset = 16;
       if (monitor) {
@@ -111,25 +112,26 @@ async function setWindowSize(w, h) {
         const size = monitor.size;
         const scale = monitor.scaleFactor;
         const mx = pos.x, my = pos.y, mw = size.width, mh = size.height;
-      let targetX, targetY;
-      if (settings.overlay_corner === 'tr' || !settings.overlay_corner) {
-        targetX = (mx + mw - w - inset) / scale;
-        targetY = (my + inset) / scale;
-      } else if (settings.overlay_corner === 'tl') {
-        targetX = (mx + inset) / scale;
-        targetY = (my + inset) / scale;
-      } else if (settings.overlay_corner === 'br') {
-        targetX = (mx + mw - w - inset) / scale;
-        targetY = (my + mh - h - inset) / scale;
-      } else if (settings.overlay_corner === 'bl') {
-        targetX = (mx + inset) / scale;
-        targetY = (my + mh - h - inset) / scale;
+        let targetX, targetY;
+        if (settings.overlay_corner === 'tr' || !settings.overlay_corner) {
+          targetX = (mx + mw - w - inset) / scale;
+          targetY = (my + inset) / scale;
+        } else if (settings.overlay_corner === 'tl') {
+          targetX = (mx + inset) / scale;
+          targetY = (my + inset) / scale;
+        } else if (settings.overlay_corner === 'br') {
+          targetX = (mx + mw - w - inset) / scale;
+          targetY = (my + mh - h - inset) / scale;
+        } else if (settings.overlay_corner === 'bl') {
+          targetX = (mx + inset) / scale;
+          targetY = (my + mh - h - inset) / scale;
+        }
+        await appWindow.setPosition({ type: 'Logical', x: targetX, y: targetY });
+      } else {
+        await appWindow.setPosition({ type: 'Logical', x: 16, y: 16 });
       }
-      await appWindow.setPosition({ type: 'Logical', x: targetX, y: targetY });
-    } else {
-      await appWindow.setPosition({ type: 'Logical', x: 16, y: 16 });
-    }
-    await appWindow.setSize({ type: 'Logical', width: w, height: h });
+      await appWindow.setSize({ type: 'Logical', width: w, height: h });
+      await appWindow.setResizable(false);
   } catch (e) {
     console.error('window resize error:', e);
   }
@@ -183,6 +185,11 @@ function bindEvents() {
   panelAddBtn.addEventListener('click', addTaskFromInput);
   panelAddInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') addTaskFromInput();
+  });
+
+  // Escape key -> collapse
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && state === 'expanded') setState('collapsed');
   });
 
   // Drag (on pill drag area or panel header)
