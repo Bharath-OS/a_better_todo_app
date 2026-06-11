@@ -168,42 +168,6 @@ pub async fn resize_overlay(app_handle: tauri::AppHandle, width: f64, height: f6
 }
 
 #[tauri::command]
-pub fn recreate_overlay(app_handle: tauri::AppHandle, x: f64, y: f64, width: f64, height: f64) -> Result<String, String> {
-    println!("recreate_overlay: pos=({:.0},{:.0}) size=({:.0},{:.0})", x, y, width, height);
-
-    // Close old overlay
-    if let Some(old) = app_handle.get_webview_window("overlay") {
-        let _ = old.close();
-    }
-
-    // Let the close process
-    std::thread::sleep(std::time::Duration::from_millis(200));
-
-    // Create new overlay at the specified position/size
-    match tauri::WebviewWindowBuilder::new(
-        &app_handle,
-        "overlay",
-        tauri::WebviewUrl::App("overlay.html".into()),
-    )
-    .title("PTC Overlay")
-    .decorations(false)
-    .transparent(true)
-    .always_on_top(true)
-    .skip_taskbar(true)
-    .visible(true)
-    .focused(false)
-    .inner_size(width, height)
-    .position(x, y)
-    .build()
-    {
-        Ok(_) => println!("recreate_overlay OK"),
-        Err(e) => println!("recreate_overlay ERROR: {}", e),
-    }
-
-    Ok("ok".to_string())
-}
-
-#[tauri::command]
 pub fn exit_app(app_handle: tauri::AppHandle) -> Result<(), String> {
     app_handle.exit(0);
     Ok(())

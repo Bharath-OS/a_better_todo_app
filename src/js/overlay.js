@@ -109,6 +109,7 @@ async function setWindowSize(w, h) {
     const monitor = await appWindow.currentMonitor;
     const inset = 16;
     let x = inset, y = inset;
+    const corner = settings.overlay_corner || 'tr';
     if (monitor) {
       const pos = monitor.position;
       const sz = monitor.size;
@@ -117,19 +118,26 @@ async function setWindowSize(w, h) {
       const screenH = sz.height / scale;
       const left = pos.x / scale;
       const top = pos.y / scale;
-      const corner = settings.overlay_corner || 'tr';
       if (corner === 'tr') {
-        x = left + screenW - w - inset;
-        y = top + inset;
+        x = left + screenW - w - inset; y = top + inset;
       } else if (corner === 'tl') {
-        x = left + inset;
-        y = top + inset;
+        x = left + inset; y = top + inset;
       } else if (corner === 'br') {
-        x = left + screenW - w - inset;
-        y = top + screenH - h - inset;
+        x = left + screenW - w - inset; y = top + screenH - h - inset;
       } else if (corner === 'bl') {
-        x = left + inset;
-        y = top + screenH - h - inset;
+        x = left + inset; y = top + screenH - h - inset;
+      }
+    } else {
+      const sw = window.screen.width;
+      const sh = window.screen.height;
+      if (corner === 'tr') {
+        x = sw - w - inset; y = inset;
+      } else if (corner === 'tl') {
+        x = inset; y = inset;
+      } else if (corner === 'br') {
+        x = sw - w - inset; y = sh - h - inset;
+      } else if (corner === 'bl') {
+        x = inset; y = sh - h - inset;
       }
     }
     const result = await window.__TAURI__.core.invoke('resize_overlay', { width: w, height: h, x, y });
@@ -208,32 +216,6 @@ function bindEvents() {
 }
 
 // ============ Settings Sync ============
-async function calcOverlayPosition(w, h) {
-  const inset = 16;
-  let x = inset, y = inset;
-  const monitor = await appWindow.currentMonitor;
-  if (monitor) {
-    const pos = monitor.position;
-    const sz = monitor.size;
-    const scale = monitor.scaleFactor;
-    const screenW = sz.width / scale;
-    const screenH = sz.height / scale;
-    const left = pos.x / scale;
-    const top = pos.y / scale;
-    const corner = settings.overlay_corner || 'tr';
-    if (corner === 'tr') {
-      x = left + screenW - w - inset; y = top + inset;
-    } else if (corner === 'tl') {
-      x = left + inset; y = top + inset;
-    } else if (corner === 'br') {
-      x = left + screenW - w - inset; y = top + screenH - h - inset;
-    } else if (corner === 'bl') {
-      x = left + inset; y = top + screenH - h - inset;
-    }
-  }
-  return { x, y };
-}
-
 function measurePillWidth() {
   let w = 28;
   w += 6;
@@ -261,29 +243,13 @@ function applyOverlaySettings() {
 
 listen('settings-changed', async (event) => {
   const { key, value } = event.payload || {};
-
-  // Keys that affect overlay size/position: close old overlay and create
-  // new one at the correct position from the start
-  if (key && ['overlay_corner', 'show_streak'].includes(key)) {
-    settings[key] = value;
-    const peekW = measurePillWidth();
-    const { x, y } = await calcOverlayPosition(peekW, PILL_HEIGHT);
-    await window.__TAURI__.core.invoke('recreate_overlay', {
-      x, y, width: peekW, height: PILL_HEIGHT
-    });
-    return;
-  }
-
   if (key) settings[key] = value;
   if (!key) settings = await getSettings();
   updateStreakDisplay();
   applyOverlaySettings();
-  if (state === 'expanded') {
-    await setWindowSize(PANEL_WIDTH, PANEL_HEIGHT);
-  } else {
-    const w = measurePillWidth();
-    await setWindowSize(w, PILL_HEIGHT);
-  }
+  const w = state === 'expanded' ? PANEL_WIDTH : measurePillWidth();
+  const h = state === 'expanded' ? PANEL_HEIGHT : PILL_HEIGHT;
+  await setWindowSize(w, h);
 });
 
 // ============ Drag ============
