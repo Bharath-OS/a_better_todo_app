@@ -316,13 +316,11 @@ async function addTaskFromInput() {
 }
 
 async function handleOverlayToggle(id) {
-  await toggleTask(id);
   const task = tasks.find(t => t.id === id);
+  const wasIncomplete = task && !task.completed;
+  await toggleTask(id);
   if (task) task.completed = !task.completed;
-  const dailyUndone = tasks.filter(t => t.period === 'daily' && !t.completed);
-  if (task?.period === 'daily' && dailyUndone.length === 0) {
-    await showConfetti();
-  }
+  if (wasIncomplete) celebrate();
   await loadTasks();
   updateDot();
 }

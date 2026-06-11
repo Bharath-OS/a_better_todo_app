@@ -57,11 +57,51 @@ async function resetData() {
 }
 
 // ============ Confetti ============
-async function showConfetti() {
+function celebrate() {
+  // Fire in-window confetti (always works)
+  try {
+    if (typeof confetti !== 'undefined') {
+      const duration = 1200;
+      const end = Date.now() + duration;
+      const colors = ['#3B82F6', '#22C55E', '#F59E0B', '#EC4899', '#A855F7'];
+      confetti({
+        particleCount: 120,
+        spread: 90,
+        startVelocity: 45,
+        origin: { x: 0.5, y: 0.5 },
+        colors,
+        zIndex: 9999,
+      });
+      function frame() {
+        confetti({
+          particleCount: 6,
+          angle: 60,
+          spread: 65,
+          startVelocity: 55,
+          origin: { x: 0, y: 0.7 },
+          colors,
+          zIndex: 9999,
+        });
+        confetti({
+          particleCount: 6,
+          angle: 120,
+          spread: 65,
+          startVelocity: 55,
+          origin: { x: 1, y: 0.7 },
+          colors,
+          zIndex: 9999,
+        });
+        if (Date.now() < end) requestAnimationFrame(frame);
+      }
+      frame();
+    }
+  } catch (e) {}
+
+  // Also try fullscreen window (best-effort)
   try {
     const { WebviewWindow } = window.__TAURI__.window;
     const label = 'confetti-' + Date.now();
-    const win = new WebviewWindow(label, {
+    new WebviewWindow(label, {
       url: '/confetti.html',
       decorations: false,
       transparent: true,
@@ -69,23 +109,13 @@ async function showConfetti() {
       skipTaskbar: true,
       focus: false,
     });
-    win.once('tauri://created', async () => {
-      try {
-        const monitor = await win.currentMonitor();
-        if (monitor) {
-          const { width, height } = monitor.size;
-          const scale = monitor.scaleFactor;
-          await win.setPosition({ type: 'Logical', x: 0, y: 0 });
-          await win.setSize({ type: 'Logical', width: width / scale, height: height / scale });
-        }
-      } catch (e) {}
-    });
     setTimeout(async () => {
-      try { await win.close(); } catch (e) {}
+      try {
+        const w = WebviewWindow.getByLabel(label);
+        if (w) await w.close();
+      } catch (e) {}
     }, 4000);
-  } catch (e) {
-    console.warn('Confetti window failed:', e);
-  }
+  } catch (e) {}
 }
 
 // ============ Event Listeners ============

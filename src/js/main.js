@@ -207,12 +207,11 @@ function renderTaskItem(task) {
 
 // ============ Task Operations ============
 async function handleToggle(id) {
-  await toggleTask(id);
   const tasks = await getTasks();
-  const dailyUndone = tasks.filter(t => t.period === 'daily' && !t.completed);
-  if (dailyUndone.length === 0) {
-    await showConfetti();
-  }
+  const task = tasks.find(t => t.id === id);
+  const wasIncomplete = task && !task.completed;
+  await toggleTask(id);
+  if (wasIncomplete) celebrate();
   renderContent();
 }
 
