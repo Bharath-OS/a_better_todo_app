@@ -5,6 +5,8 @@ mod tray;
 use commands::DbState;
 use db::Database;
 use tauri::Manager;
+use tauri_plugin_global_shortcut::GlobalShortcutExt;
+
 fn create_overlay(app_handle: &tauri::AppHandle) {
     if app_handle.get_webview_window("overlay").is_some() {
         return;
@@ -53,6 +55,32 @@ fn update_overlay(app_handle: &tauri::AppHandle) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(move |app, _shortcut, event| {
+                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        if app.get_webview_window("quick-add").is_some() {
+                            return;
+                        }
+                        let _ = tauri::WebviewWindowBuilder::new(
+                            app,
+                            "quick-add",
+                            tauri::WebviewUrl::App("quick-add.html".into()),
+                        )
+                        .title("Quick Add")
+                        .decorations(false)
+                        .transparent(true)
+                        .always_on_top(true)
+                        .skip_taskbar(true)
+                        .inner_size(420.0, 140.0)
+                        .visible(true)
+                        .focused(true)
+                        .center()
+                        .build();
+                    }
+                })
+                .build(),
+        )
         .setup(|app| {
             let app_dir = app
                 .path()
@@ -63,6 +91,10 @@ pub fn run() {
             app.manage(DbState(std::sync::Mutex::new(database)));
 
             tray::setup_tray(app)?;
+
+            // Register global shortcut: Ctrl+Alt+T for quick-add
+            let handle = app.handle().clone();
+            let _ = handle.global_shortcut().register("Ctrl+Alt+T");
 
             // Track main window focus and manage overlay lifecycle
             let app_handle = app.handle().clone();
@@ -86,7 +118,7 @@ pub fn run() {
             }
 
             // Initial check: if main is not visible/focused, create overlay
-            update_overlay(app.handle());
+            // (intentionally skipped — overlay lifecycle is driven by window events)
 
             Ok(())
         })

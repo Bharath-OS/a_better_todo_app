@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quick Add</title>
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/quick-add.css">
+</head>
+<body>
+  <div id="app">
+    <div class="quick-add-dialog">
+      <input type="text" id="task-input" placeholder="Add a task… (+d / +w / +q / +y)" autofocus>
+      <div class="quick-add-footer">
+        <div class="period-selector">
+          <button class="period-btn active" data-period="daily">Daily</button>
+          <button class="period-btn" data-period="weekly">Weekly</button>
+          <button class="period-btn" data-period="quarterly">Quarterly</button>
+          <button class="period-btn" data-period="yearly">Yearly</button>
+        </div>
+        <span class="quick-add-hint">Enter to save &middot; Esc to cancel</span>
+      </div>
+    </div>
+  </div>
+  <script src="js/store.js"></script>
+  <script src="js/quick-add.js"></script>
+</body>
+</html>
