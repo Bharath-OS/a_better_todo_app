@@ -236,11 +236,11 @@ function applyOverlaySettings() {
 listen('settings-changed', async (event) => {
   const { key, value } = event.payload || {};
 
-  // Keys that affect overlay size/position need a full window recreate
+  // Keys that affect overlay size/position: reload the page so init()
+  // re-reads settings from DB and positions the window correctly
   if (key && ['overlay_corner', 'show_streak'].includes(key)) {
     settings[key] = value;
-    applyOverlaySettings();
-    await window.__TAURI__.core.invoke('recreate_overlay');
+    window.location.reload();
     return;
   }
 
