@@ -4,7 +4,7 @@
   "identifier": "com.ptc.app",
   "build": {
     "frontendDist": "../src",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:1421",
     "beforeDevCommand": "python dev_server.py",
     "beforeBuildCommand": ""
   },

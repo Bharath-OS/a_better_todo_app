@@ -1,6 +1,6 @@
 use crate::db::{Database, Task, StreakData, DailyHistory};
 use std::collections::HashMap;
-use tauri::{Emitter, State};
+use tauri::{Emitter, Manager, State};
 use std::sync::Mutex;
 
 pub struct DbState(pub Mutex<Database>);
@@ -102,10 +102,48 @@ pub fn get_streak(db: State<DbState>) -> Result<StreakData, String> {
 }
 
 #[tauri::command]
-pub fn resize_overlay(window: tauri::Window, width: f64, height: f64, x: f64, y: f64) -> Result<(), String> {
-    let _ = window.set_position(tauri::LogicalPosition::new(x, y));
-    let _ = window.set_size(tauri::LogicalSize::new(width, height));
-    Ok(())
+pub fn resize_overlay(app_handle: tauri::AppHandle, width: f64, height: f64, x: f64, y: f64) -> Result<String, String> {
+    println!("resize_overlay called: size=({:.0},{:.0}) pos=({:.0},{:.0})", width, height, x, y);
+
+    let win = app_handle.get_webview_window("overlay")
+        .ok_or("overlay window not found".to_string())?;
+
+    let scale = win.scale_factor().unwrap_or(1.0);
+    println!("  scale factor: {}", scale);
+
+    // --- set size ---
+    let phys_w = (width.max(1.0) * scale) as u32;
+    let phys_h = (height.max(1.0) * scale) as u32;
+    println!("  physical size: ({},{})", phys_w, phys_h);
+    match win.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(phys_w, phys_h))) {
+        Ok(_) => println!("  set_size OK"),
+        Err(e) => {
+            let msg = format!("  set_size error: {}", e);
+            println!("{}", msg);
+            return Err(msg);
+        }
+    }
+
+    // --- set position ---
+    let phys_x = (x.max(0.0) * scale) as i32;
+    let phys_y = (y.max(0.0) * scale) as i32;
+    println!("  physical pos: ({},{})", phys_x, phys_y);
+    match win.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(phys_x, phys_y))) {
+        Ok(_) => println!("  set_position OK"),
+        Err(e) => {
+            let msg = format!("  set_position error: {}", e);
+            println!("{}", msg);
+            return Err(msg);
+        }
+    }
+
+    // --- verify ---
+    match win.outer_position() {
+        Ok(p) => println!("  outer_position after: ({},{})", p.x, p.y),
+        Err(e) => println!("  outer_position error: {}", e),
+    }
+
+    Ok("ok".to_string())
 }
 
 #[tauri::command]

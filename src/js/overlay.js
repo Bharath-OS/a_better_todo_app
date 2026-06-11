@@ -71,6 +71,7 @@ async function loadTasks() {
 async function setState(newState) {
   const prev = state;
   state = newState;
+  console.log('setState:', prev, '->', newState);
 
   // Clear peek timer
   if (peekTimer) { clearTimeout(peekTimer); peekTimer = null; }
@@ -80,17 +81,23 @@ async function setState(newState) {
     pillContainer.classList.add('state-collapsed');
     pillPeekExtras.style.display = 'none';
     pillContainer.style.width = PILL_WIDTH + 'px';
+    console.log('setState: calling setWindowSize(', PILL_WIDTH, PILL_HEIGHT, ')');
     await setWindowSize(PILL_WIDTH, PILL_HEIGHT);
+    console.log('setState: setWindowSize done');
   } else if (newState === 'peek') {
     pillContainer.classList.add('state-peek');
     pillPeekExtras.style.display = 'flex';
     pillContainer.style.width = PEEK_WIDTH + 'px';
+    console.log('setState: calling setWindowSize(', PEEK_WIDTH, PILL_HEIGHT, ')');
     await setWindowSize(PEEK_WIDTH, PILL_HEIGHT);
+    console.log('setState: setWindowSize done');
   } else if (newState === 'expanded') {
     pillContainer.style.display = 'none';
     panelContainer.style.display = 'flex';
     pillContainer.classList.add('state-expanded');
+    console.log('setState: calling setWindowSize(', PANEL_WIDTH, PANEL_HEIGHT, ')');
     await setWindowSize(PANEL_WIDTH, PANEL_HEIGHT);
+    console.log('setState: setWindowSize done');
     renderTaskList();
     updateFooter();
   }
@@ -103,36 +110,37 @@ async function setState(newState) {
 }
 
 async function setWindowSize(w, h) {
-  try {
-    const monitor = await appWindow.currentMonitor();
-    const inset = 16;
-    let x = inset, y = inset;
-    if (monitor) {
-      const pos = monitor.position;
-      const sz = monitor.size;
-      const scale = monitor.scaleFactor;
-      const screenW = sz.width / scale;
-      const screenH = sz.height / scale;
-      const left = pos.x / scale;
-      const top = pos.y / scale;
-      const corner = settings.overlay_corner || 'tr';
-      if (corner === 'tr') {
-        x = left + screenW - w - inset;
-        y = top + inset;
-      } else if (corner === 'tl') {
-        x = left + inset;
-        y = top + inset;
-      } else if (corner === 'br') {
-        x = left + screenW - w - inset;
-        y = top + screenH - h - inset;
-      } else if (corner === 'bl') {
-        x = left + inset;
-        y = top + screenH - h - inset;
-      }
+  const monitor = await appWindow.currentMonitor();
+  const inset = 16;
+  let x = inset, y = inset;
+  if (monitor) {
+    const pos = monitor.position;
+    const sz = monitor.size;
+    const scale = monitor.scaleFactor;
+    const screenW = sz.width / scale;
+    const screenH = sz.height / scale;
+    const left = pos.x / scale;
+    const top = pos.y / scale;
+    const corner = settings.overlay_corner || 'tr';
+    if (corner === 'tr') {
+      x = left + screenW - w - inset;
+      y = top + inset;
+    } else if (corner === 'tl') {
+      x = left + inset;
+      y = top + inset;
+    } else if (corner === 'br') {
+      x = left + screenW - w - inset;
+      y = top + screenH - h - inset;
+    } else if (corner === 'bl') {
+      x = left + inset;
+      y = top + screenH - h - inset;
     }
-    await window.__TAURI__.core.invoke('resize_overlay', { width: w, height: h, x, y });
+  }
+  try {
+    const result = await window.__TAURI__.core.invoke('resize_overlay', { width: w, height: h, x, y });
+    console.log('invoke OK:', result);
   } catch (e) {
-    console.error('window resize error:', e);
+    console.error('invoke FAILED:', e);
   }
 }
 

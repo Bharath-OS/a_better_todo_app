@@ -3,7 +3,7 @@ import socketserver
 import os
 import sys
 
-PORT = 1420
+PORT = 1421
 DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src')
 
 class Handler(http.server.SimpleHTTPRequestHandler):
