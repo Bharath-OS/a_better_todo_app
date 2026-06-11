@@ -102,6 +102,12 @@ pub fn get_streak(db: State<DbState>) -> Result<StreakData, String> {
 }
 
 #[tauri::command]
+pub fn resize_overlay(window: tauri::Window, width: f64, height: f64) -> Result<(), String> {
+    let _ = window.set_size(tauri::LogicalSize::new(width, height));
+    Ok(())
+}
+
+#[tauri::command]
 pub fn exit_app(app_handle: tauri::AppHandle) -> Result<(), String> {
     app_handle.exit(0);
     Ok(())

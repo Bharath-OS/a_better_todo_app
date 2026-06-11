@@ -59,6 +59,7 @@ pub fn run() {
             commands::get_history,
             commands::get_streak,
             commands::reset_data,
+            commands::resize_overlay,
             commands::exit_app,
         ])
         .build(tauri::generate_context!())
