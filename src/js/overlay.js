@@ -208,6 +208,32 @@ function bindEvents() {
 }
 
 // ============ Settings Sync ============
+async function calcOverlayPosition(w, h) {
+  const inset = 16;
+  let x = inset, y = inset;
+  const monitor = await appWindow.currentMonitor;
+  if (monitor) {
+    const pos = monitor.position;
+    const sz = monitor.size;
+    const scale = monitor.scaleFactor;
+    const screenW = sz.width / scale;
+    const screenH = sz.height / scale;
+    const left = pos.x / scale;
+    const top = pos.y / scale;
+    const corner = settings.overlay_corner || 'tr';
+    if (corner === 'tr') {
+      x = left + screenW - w - inset; y = top + inset;
+    } else if (corner === 'tl') {
+      x = left + inset; y = top + inset;
+    } else if (corner === 'br') {
+      x = left + screenW - w - inset; y = top + screenH - h - inset;
+    } else if (corner === 'bl') {
+      x = left + inset; y = top + screenH - h - inset;
+    }
+  }
+  return { x, y };
+}
+
 function measurePillWidth() {
   let w = 28;
   w += 6;
@@ -236,11 +262,15 @@ function applyOverlaySettings() {
 listen('settings-changed', async (event) => {
   const { key, value } = event.payload || {};
 
-  // Keys that affect overlay size/position: reload the page so init()
-  // re-reads settings from DB and positions the window correctly
+  // Keys that affect overlay size/position: close old overlay and create
+  // new one at the correct position from the start
   if (key && ['overlay_corner', 'show_streak'].includes(key)) {
     settings[key] = value;
-    window.location.reload();
+    const peekW = measurePillWidth();
+    const { x, y } = await calcOverlayPosition(peekW, PILL_HEIGHT);
+    await window.__TAURI__.core.invoke('recreate_overlay', {
+      x, y, width: peekW, height: PILL_HEIGHT
+    });
     return;
   }
 
