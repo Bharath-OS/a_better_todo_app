@@ -1,9 +1,10 @@
 import http.server
 import socketserver
+import socket
 import os
 import sys
 
-PORT = 1421
+PORT = int(os.environ.get('DEV_PORT', 1422))
 DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src')
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -22,11 +23,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.send_response(204)
             self.end_headers()
             return
-        if path == '/overlay' or path == '/overlay.html':
+        if path in ('/overlay', '/overlay.html'):
             self.path = '/overlay.html'
-        elif path == '/confetti' or path == '/confetti.html':
+        elif path in ('/confetti', '/confetti.html'):
             self.path = '/confetti.html'
-        elif path == '/' or path == '/main' or path == '/main.html':
+        elif path in ('/', '/main', '/main.html'):
             self.path = '/main.html'
         elif path.startswith('/css/') or path.startswith('/js/') or path.startswith('/assets/'):
             pass
@@ -38,6 +39,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 if __name__ == '__main__':
     os.chdir(DIR)
+    socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer(('', PORT), Handler) as httpd:
         print(f'Serving frontend at http://localhost:{PORT}')
         httpd.serve_forever()
