@@ -59,10 +59,9 @@ async function loadTasks() {
     renderTaskList();
     updateFooter();
   }
-    updateDot();
-    await updateStreakDisplay();
-    updateTabCounts();
-  }
+  updateDot();
+  await updateStreakDisplay();
+  updateTabCounts();
 }
 
 // ============ State Machine ============
