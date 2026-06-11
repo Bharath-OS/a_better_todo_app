@@ -4,10 +4,11 @@ let streakData = { current: 0, best: 0 };
 
 // ============ Title Bar ============
 async function hideMainShowOverlay() {
-  const { getCurrentWindow, WebviewWindow } = window.__TAURI__.window;
-  const main = getCurrentWindow();
+  const main = window.__TAURI__.window.getCurrentWindow();
   try {
-    const overlay = WebviewWindow.getByLabel('overlay');
+    const { getAllWindows } = window.__TAURI__.window;
+    const windows = await getAllWindows();
+    const overlay = windows.find(w => w.label === 'overlay');
     if (overlay) {
       const monitor = await overlay.currentMonitor();
       if (monitor) {
@@ -22,10 +23,10 @@ async function hideMainShowOverlay() {
       await overlay.show();
       await overlay.setFocus();
     }
-    await main.hide();
   } catch (e) {
-    console.error('hide/show error:', e);
+    console.error('overlay show error:', e);
   }
+  await main.hide();
 }
 
 document.getElementById('minimize-btn').onclick = hideMainShowOverlay;
