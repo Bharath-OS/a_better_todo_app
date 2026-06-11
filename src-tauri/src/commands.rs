@@ -78,11 +78,13 @@ pub fn get_settings(db: State<DbState>) -> Result<HashMap<String, String>, Strin
 }
 
 #[tauri::command]
-pub fn update_setting(db: State<DbState>, key: String, value: String) -> Result<(), String> {
+pub fn update_setting(app_handle: tauri::AppHandle, db: State<DbState>, key: String, value: String) -> Result<(), String> {
     db.0.lock()
         .map_err(|e| e.to_string())?
         .update_setting(&key, &value)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    let _ = app_handle.emit("settings-changed", ());
+    Ok(())
 }
 
 #[tauri::command]

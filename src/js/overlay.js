@@ -47,7 +47,7 @@ async function init() {
   updateTabCounts();
   bindEvents();
   applyOverlaySettings();
-  const w = Math.max(pillContainer.offsetWidth, 60);
+  const w = measurePillWidth();
   await setWindowSize(w, PILL_HEIGHT);
 }
 
@@ -84,14 +84,14 @@ async function setState(newState) {
     pillPeekExtras.style.display = 'none';
     pillContainer.style.width = '';
     applyOverlaySettings();
-    const w = Math.max(pillContainer.offsetWidth, 60);
+    const w = measurePillWidth();
     await setWindowSize(w, PILL_HEIGHT);
   } else if (newState === 'peek') {
     pillContainer.classList.add('state-peek');
     pillPeekExtras.style.display = 'flex';
     pillContainer.style.width = '';
     pillContainer.style.opacity = '';
-    const w = Math.max(pillContainer.offsetWidth, 80);
+    const w = measurePillWidth();
     await setWindowSize(w, PILL_HEIGHT);
   } else if (newState === 'expanded') {
     pillContainer.style.display = 'none';
@@ -217,6 +217,21 @@ function bindEvents() {
 }
 
 // ============ Settings Sync ============
+function measurePillWidth() {
+  let w = 28;
+  w += 6;
+  w += pillLabel.offsetWidth || 40;
+  if (pillStreak.style.display !== 'none') {
+    w += 6;
+    w += pillStreak.offsetWidth || 30;
+  }
+  if (pillPeekExtras.style.display !== 'none') {
+    w += 6;
+    w += pillPeekExtras.offsetWidth || 30;
+  }
+  return Math.max(w, 60);
+}
+
 function applyOverlaySettings() {
   const opacity = parseFloat(settings.collapsed_opacity || '0.6');
   pillContainer.style.opacity = state === 'collapsed' ? opacity : '';
@@ -227,7 +242,7 @@ listen('settings-changed', async () => {
   updateStreakDisplay();
   applyOverlaySettings();
   if (state === 'collapsed' || state === 'peek') {
-    const w = Math.max(pillContainer.offsetWidth, state === 'peek' ? 80 : 60);
+    const w = measurePillWidth();
     await setWindowSize(w, PILL_HEIGHT);
   }
 });
