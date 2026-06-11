@@ -59,29 +59,30 @@ async function resetData() {
 // ============ Confetti ============
 async function showConfetti() {
   try {
-    const { WebviewWindow } = window.__TAURI__.webviewWindow;
+    const { WebviewWindow } = window.__TAURI__.window;
     const label = 'confetti-' + Date.now();
-    const w = window.screen.width;
-    const h = window.screen.height;
     const win = new WebviewWindow(label, {
       url: '/confetti.html',
       decorations: false,
       transparent: true,
       alwaysOnTop: true,
-      width: w,
-      height: h,
-      x: 0,
-      y: 0,
       skipTaskbar: true,
       focus: false,
     });
-    // Auto-cleanup after animation
-    setTimeout(async () => {
+    win.once('tauri://created', async () => {
       try {
-        const { getCurrentWindow } = window.__TAURI__.window;
-        // We can't close another window from here easily
+        const monitor = await win.currentMonitor();
+        if (monitor) {
+          const { width, height } = monitor.size;
+          const scale = monitor.scaleFactor;
+          await win.setPosition({ type: 'Logical', x: 0, y: 0 });
+          await win.setSize({ type: 'Logical', width: width / scale, height: height / scale });
+        }
       } catch (e) {}
-    }, 3000);
+    });
+    setTimeout(async () => {
+      try { await win.close(); } catch (e) {}
+    }, 4000);
   } catch (e) {
     console.warn('Confetti window failed:', e);
   }
