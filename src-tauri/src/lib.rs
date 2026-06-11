@@ -5,6 +5,7 @@ mod tray;
 use commands::DbState;
 use db::Database;
 use tauri::Manager;
+use tauri::Emitter;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -33,17 +34,33 @@ pub fn run() {
             tray::setup_tray(app)?;
 
             // Listen for window close events (hide instead of close)
+            // and emit lifecycle state changes to the overlay
             let app_handle = app.handle().clone();
             if let Some(main_window) = app.get_webview_window("main") {
                 main_window.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        if let Some(window) = app_handle.get_webview_window("main") {
-                            let _ = window.hide();
+                    match event {
+                        tauri::WindowEvent::CloseRequested { api, .. } => {
+                            api.prevent_close();
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                let _ = window.hide();
+                            }
+                            let _ = app_handle.emit("main-window-state", "hidden");
                         }
+                        tauri::WindowEvent::Focused(_) => {
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                let hidden = !window.is_visible().unwrap_or(true);
+                                let minimized = window.is_minimized().unwrap_or(false);
+                                let state = if hidden || minimized { "hidden" } else { "visible" };
+                                let _ = app_handle.emit("main-window-state", state);
+                            }
+                        }
+                        _ => {}
                     }
                 });
             }
+
+            // Emit initial state after setup
+            let _ = app.handle().emit("main-window-state", "visible");
 
             Ok(())
         })

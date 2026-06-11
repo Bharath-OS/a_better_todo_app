@@ -48,24 +48,36 @@ async function init() {
   updateTabCounts();
   bindEvents();
   applyOverlaySettings();
+  await setState('collapsed');
+}
 
-  // If main window is visible, hide overlay immediately (no flash)
+// ============ Main Window State Sync ============
+async function syncMainWindowState() {
   try {
     const all = await window.__TAURI__.window.getAllWindows();
     const main = all.find(w => w.label === 'main');
-    if (main) {
-      const minimized = await main.isMinimized().catch(() => false);
-      const visible = await main.isVisible().catch(() => true);
-      if (!minimized && visible) {
-        overlayApp.style.display = 'none';
-        state = 'hidden';
-        return;
-      }
-    }
+    if (!main) return;
+    const minimized = await main.isMinimized().catch(() => false);
+    const visible = await main.isVisible().catch(() => true);
+    setOverlayVisible(minimized || !visible);
   } catch (e) {}
-
-  await setState('collapsed');
 }
+
+function setOverlayVisible(show) {
+  if (show && state === 'hidden') {
+    overlayApp.style.display = '';
+    state = 'collapsed';
+    setState('collapsed');
+  } else if (!show && state !== 'hidden') {
+    overlayApp.style.display = 'none';
+    state = 'hidden';
+  }
+}
+
+// Listen for lifecycle events from Rust
+listen('main-window-state', (event) => {
+  setOverlayVisible(event.payload === 'hidden');
+});
 
 // ============ Task Loading ============
 async function loadTasks() {
@@ -447,29 +459,8 @@ function escHtml(str) {
   return div.innerHTML;
 }
 
-// ============ Main Window State Sync ============
-async function syncMainWindowState() {
-  try {
-    const all = await window.__TAURI__.window.getAllWindows();
-    const main = all.find(w => w.label === 'main');
-    if (!main) return;
-    const minimized = await main.isMinimized().catch(() => false);
-    const visible = await main.isVisible().catch(() => true);
-    const shouldShow = minimized || !visible;
-
-    if (shouldShow && state === 'hidden') {
-      overlayApp.style.display = '';
-      state = 'collapsed';
-      await setState('collapsed');
-    } else if (!shouldShow && state !== 'hidden') {
-      overlayApp.style.display = 'none';
-      state = 'hidden';
-    }
-  } catch (e) {}
-}
-
 // ============ Boot ============
 init();
 
-// Check main window state periodically
-setInterval(syncMainWindowState, 500);
+// Backup poll (events may be missed during rapid transitions)
+setInterval(syncMainWindowState, 2000);
