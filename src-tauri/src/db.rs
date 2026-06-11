@@ -246,39 +246,35 @@ impl Database {
 
     pub fn get_streak(&self) -> Result<StreakData> {
         let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT date, total, completed FROM daily_history WHERE date >= ?1 ORDER BY date DESC"
+        )?;
+        let cutoff = (chrono::Utc::now() - chrono::Duration::days(365))
+            .format("%Y-%m-%d")
+            .to_string();
+        let rows = stmt.query_map(params![cutoff], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?))
+        })?;
+
+        let mut history = std::collections::HashMap::new();
+        for row in rows {
+            let (date, total, completed) = row?;
+            history.insert(date, (total, completed));
+        }
+
         let mut current: i64 = 0;
         let mut best: i64 = 0;
-
         for i in 0..365 {
             let date = (chrono::Utc::now() - chrono::Duration::days(i))
                 .format("%Y-%m-%d")
                 .to_string();
-            let row: Result<(i64, i64)> = conn.query_row(
-                "SELECT COALESCE(total,0), COALESCE(completed,0) FROM daily_history WHERE date = ?1",
-                params![date],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            );
-
-            match row {
-                Ok((total, completed)) => {
-                    let all_done = total > 0 && completed >= total;
-                    if all_done {
-                        current += 1;
-                        if current > best {
-                            best = current;
-                        }
-                    } else if i == 0 {
-                        continue;
-                    } else {
-                        break;
-                    }
+            match history.get(&date) {
+                Some((total, completed)) if *total > 0 && *completed >= *total => {
+                    current += 1;
+                    if current > best { best = current; }
                 }
-                Err(_) => {
-                    if i == 0 {
-                        continue;
-                    }
-                    break;
-                }
+                _ if i == 0 => continue,
+                _ => break,
             }
         }
 

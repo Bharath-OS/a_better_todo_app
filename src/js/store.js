@@ -59,7 +59,7 @@ async function resetData() {
 
 // ============ Confetti ============
 function celebrate() {
-  // Fire in-window confetti (always works)
+  // In-window confetti via canvas-confetti
   try {
     if (typeof confetti !== 'undefined') {
       const duration = 1200;
@@ -74,48 +74,12 @@ function celebrate() {
         zIndex: 9999,
       });
       function frame() {
-        confetti({
-          particleCount: 6,
-          angle: 60,
-          spread: 65,
-          startVelocity: 55,
-          origin: { x: 0, y: 0.7 },
-          colors,
-          zIndex: 9999,
-        });
-        confetti({
-          particleCount: 6,
-          angle: 120,
-          spread: 65,
-          startVelocity: 55,
-          origin: { x: 1, y: 0.7 },
-          colors,
-          zIndex: 9999,
-        });
+        confetti({ particleCount: 6, angle: 60, spread: 65, startVelocity: 55, origin: { x: 0, y: 0.7 }, colors, zIndex: 9999 });
+        confetti({ particleCount: 6, angle: 120, spread: 65, startVelocity: 55, origin: { x: 1, y: 0.7 }, colors, zIndex: 9999 });
         if (Date.now() < end) requestAnimationFrame(frame);
       }
       frame();
     }
-  } catch (e) {}
-
-  // Also try fullscreen window (best-effort)
-  try {
-    const { WebviewWindow } = window.__TAURI__.window;
-    const label = 'confetti-' + Date.now();
-    new WebviewWindow(label, {
-      url: '/confetti.html',
-      decorations: false,
-      transparent: true,
-      alwaysOnTop: true,
-      skipTaskbar: true,
-      focus: false,
-    });
-    setTimeout(async () => {
-      try {
-        const w = WebviewWindow.getByLabel(label);
-        if (w) await w.close();
-      } catch (e) {}
-    }, 4000);
   } catch (e) {}
 }
 
