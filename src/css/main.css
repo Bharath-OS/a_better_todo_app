@@ -457,6 +457,16 @@
   padding: 0 8px;
 }
 
+.chart-empty {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-fg);
+  font-size: 13px;
+}
+
 .chart-bar-wrapper {
   flex: 1;
   height: 100%;

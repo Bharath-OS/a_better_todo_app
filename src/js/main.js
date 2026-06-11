@@ -104,6 +104,11 @@ async function renderChart() {
   const chartEl = document.getElementById('chart-container');
   if (!chartEl) return;
   const history = await getHistory();
+  const isEmpty = history.length === 0 || history.every(h => h.total === 0);
+  if (isEmpty) {
+    chartEl.innerHTML = '<div class="chart-empty">Complete some tasks to see your progress here.</div>';
+    return;
+  }
   const days = [];
   const today = new Date();
   const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -309,7 +314,7 @@ async function renderSettings(container) {
       <div class="settings-row">
         <span class="settings-label">Collapsed opacity</span>
         <div class="settings-control">
-          <input type="range" id="setting-opacity" min="20" max="90" value="${Math.round(parseFloat(settings.collapsed_opacity || 0.6) * 100)}" step="5">
+          <input type="range" id="setting-opacity" min="20" max="100" value="${Math.round(parseFloat(settings.collapsed_opacity || 0.6) * 100)}" step="5">
           <span class="range-value" id="opacity-value">${Math.round(parseFloat(settings.collapsed_opacity || 0.6) * 100)}%</span>
         </div>
       </div>

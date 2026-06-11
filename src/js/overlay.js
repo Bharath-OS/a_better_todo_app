@@ -47,6 +47,22 @@ async function init() {
   updateTabCounts();
   bindEvents();
   applyOverlaySettings();
+
+  // If main window is visible, hide overlay immediately (no flash)
+  try {
+    const all = await window.__TAURI__.window.getAllWindows();
+    const main = all.find(w => w.label === 'main');
+    if (main) {
+      const minimized = await main.isMinimized().catch(() => false);
+      const visible = await main.isVisible().catch(() => true);
+      if (!minimized && visible) {
+        document.body.style.display = 'none';
+        state = 'hidden';
+        return;
+      }
+    }
+  } catch (e) {}
+
   await setState('collapsed');
 }
 
@@ -181,6 +197,8 @@ function bindEvents() {
     e.stopPropagation();
     await restoreMainWindow();
     setState('collapsed');
+    document.body.style.display = 'none';
+    state = 'hidden';
   });
 
   // Tabs
@@ -340,10 +358,16 @@ function updateFooter() {
 }
 
 function updateDot() {
-  const incomplete = tasks.filter(t => !t.completed && t.period === 'daily').length;
-  const color = incomplete > 0 ? 'var(--warning, #F59E0B)' : 'var(--success, #22C55E)';
-  [pillDot, panelDot].forEach(el => { if (el) el.style.backgroundColor = color; });
-  pillLabel.textContent = incomplete > 0 ? `${incomplete} left` : 'All done!';
+  const dailyTasks = tasks.filter(t => t.period === 'daily');
+  const incomplete = dailyTasks.filter(t => !t.completed).length;
+  if (dailyTasks.length === 0) {
+    [pillDot, panelDot].forEach(el => { if (el) el.style.backgroundColor = 'var(--muted-fg, #9CA3AF)'; });
+    pillLabel.textContent = 'No tasks';
+  } else {
+    const color = incomplete > 0 ? 'var(--warning, #F59E0B)' : 'var(--success, #22C55E)';
+    [pillDot, panelDot].forEach(el => { if (el) el.style.backgroundColor = color; });
+    pillLabel.textContent = incomplete > 0 ? `${incomplete} left` : 'All done!';
+  }
 }
 
 async function updateStreakDisplay() {
@@ -422,5 +446,29 @@ function escHtml(str) {
   return div.innerHTML;
 }
 
+// ============ Main Window State Sync ============
+async function syncMainWindowState() {
+  try {
+    const all = await window.__TAURI__.window.getAllWindows();
+    const main = all.find(w => w.label === 'main');
+    if (!main) return;
+    const minimized = await main.isMinimized().catch(() => false);
+    const visible = await main.isVisible().catch(() => true);
+    const shouldShow = minimized || !visible;
+
+    if (shouldShow && state === 'hidden') {
+      document.body.style.display = '';
+      state = 'collapsed';
+      await setState('collapsed');
+    } else if (!shouldShow && state !== 'hidden') {
+      document.body.style.display = 'none';
+      state = 'hidden';
+    }
+  } catch (e) {}
+}
+
 // ============ Boot ============
 init();
+
+// Check main window state periodically
+setInterval(syncMainWindowState, 500);
