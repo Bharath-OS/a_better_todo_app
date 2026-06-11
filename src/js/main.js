@@ -3,12 +3,9 @@ let settings = {};
 let streakData = { current: 0, best: 0 };
 
 // ============ Title Bar ============
-document.getElementById('minimize-btn').onclick = () => window.__TAURI__.window.getCurrentWindow().minimize();
-document.getElementById('maximize-btn').onclick = () => window.__TAURI__.window.getCurrentWindow().toggleMaximize();
-document.getElementById('close-btn').onclick = async () => {
+async function hideMainShowOverlay() {
   const { getCurrentWindow, WebviewWindow } = window.__TAURI__.window;
   const main = getCurrentWindow();
-  await main.hide();
   try {
     const overlay = WebviewWindow.getByLabel('overlay');
     if (overlay) {
@@ -25,10 +22,15 @@ document.getElementById('close-btn').onclick = async () => {
       await overlay.show();
       await overlay.setFocus();
     }
+    await main.hide();
   } catch (e) {
-    console.error('close button error:', e);
+    console.error('hide/show error:', e);
   }
-};
+}
+
+document.getElementById('minimize-btn').onclick = hideMainShowOverlay;
+document.getElementById('maximize-btn').onclick = () => window.__TAURI__.window.getCurrentWindow().toggleMaximize();
+document.getElementById('close-btn').onclick = hideMainShowOverlay;
 
 // ============ Sidebar ============
 document.querySelectorAll('.nav-item').forEach(item => {
@@ -206,7 +208,11 @@ function renderTaskItem(task) {
 // ============ Task Operations ============
 async function handleToggle(id) {
   await toggleTask(id);
-  await showConfetti();
+  const tasks = await getTasks();
+  const dailyUndone = tasks.filter(t => t.period === 'daily' && !t.completed);
+  if (dailyUndone.length === 0) {
+    await showConfetti();
+  }
   renderContent();
 }
 
