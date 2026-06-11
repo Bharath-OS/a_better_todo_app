@@ -39,7 +39,8 @@ async function getSettings() {
 }
 
 async function updateSetting(key, value) {
-  return await invoke('update_setting', { key, value });
+  await invoke('update_setting', { key, value });
+  try { await window.__TAURI__.event.emit('settings-changed', { key, value }); } catch (e) {}
 }
 
 // ============ History & Streak ============

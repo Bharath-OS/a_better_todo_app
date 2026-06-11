@@ -46,6 +46,7 @@ async function init() {
   updateStreakDisplay();
   updateTabCounts();
   bindEvents();
+  applyOverlaySettings();
   const w = Math.max(pillContainer.offsetWidth, 60);
   await setWindowSize(w, PILL_HEIGHT);
 }
@@ -82,12 +83,14 @@ async function setState(newState) {
     pillContainer.classList.add('state-collapsed');
     pillPeekExtras.style.display = 'none';
     pillContainer.style.width = '';
+    applyOverlaySettings();
     const w = Math.max(pillContainer.offsetWidth, 60);
     await setWindowSize(w, PILL_HEIGHT);
   } else if (newState === 'peek') {
     pillContainer.classList.add('state-peek');
     pillPeekExtras.style.display = 'flex';
     pillContainer.style.width = '';
+    pillContainer.style.opacity = '';
     const w = Math.max(pillContainer.offsetWidth, 80);
     await setWindowSize(w, PILL_HEIGHT);
   } else if (newState === 'expanded') {
@@ -160,18 +163,28 @@ function bindEvents() {
     if (state === 'peek' || state === 'collapsed') setState('expanded');
   });
 
-  // Collapse button
+  // Collapse button (panel)
   collapseBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     setState('collapsed');
   });
 
-  // Close button — show main window AND collapse overlay
+  // Close button in peek extras — show main window AND collapse
   pillCloseBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
     await restoreMainWindow();
     setState('collapsed');
   });
+
+  // Close button in expanded panel — show main window AND collapse
+  const expandCloseBtn = document.getElementById('expand-close-btn');
+  if (expandCloseBtn) {
+    expandCloseBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await restoreMainWindow();
+      setState('collapsed');
+    });
+  }
 
   // Tabs
   document.querySelectorAll('.panel-tab').forEach(tab => {
@@ -202,6 +215,22 @@ function bindEvents() {
     el.addEventListener('mousedown', startDrag);
   });
 }
+
+// ============ Settings Sync ============
+function applyOverlaySettings() {
+  const opacity = parseFloat(settings.collapsed_opacity || '0.6');
+  pillContainer.style.opacity = state === 'collapsed' ? opacity : '';
+}
+
+listen('settings-changed', async () => {
+  settings = await getSettings();
+  updateStreakDisplay();
+  applyOverlaySettings();
+  if (state === 'collapsed' || state === 'peek') {
+    const w = Math.max(pillContainer.offsetWidth, state === 'peek' ? 80 : 60);
+    await setWindowSize(w, PILL_HEIGHT);
+  }
+});
 
 // ============ Drag ============
 let dragStartPos = null;
