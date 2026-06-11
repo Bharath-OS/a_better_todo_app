@@ -17,7 +17,6 @@ pub fn run() {
                 .expect("Failed to get app data dir");
             let database =
                 Database::new(&app_dir).expect("Failed to initialize database");
-            database.seed_data().ok();
             app.manage(DbState(std::sync::Mutex::new(database)));
 
             // Position overlay at top-right corner
