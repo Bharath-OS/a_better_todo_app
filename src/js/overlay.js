@@ -104,7 +104,6 @@ async function setState(newState) {
 
 async function setWindowSize(w, h) {
     try {
-      await appWindow.setResizable(true);
       const monitor = await appWindow.currentMonitor();
       const inset = 16;
       if (monitor) {
@@ -131,7 +130,6 @@ async function setWindowSize(w, h) {
         await appWindow.setPosition({ type: 'Logical', x: 16, y: 16 });
       }
       await appWindow.setSize({ type: 'Logical', width: w, height: h });
-      await appWindow.setResizable(false);
   } catch (e) {
     console.error('window resize error:', e);
   }
