@@ -234,10 +234,8 @@ async function restoreMainWindow() {
       await main.show();
       await main.setFocus();
     }
-    await appWindow.hide();
   } catch (e) {
     console.error('restoreMainWindow error:', e);
-    await appWindow.hide();
   }
 }
 

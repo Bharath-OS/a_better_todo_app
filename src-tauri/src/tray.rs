@@ -26,16 +26,12 @@ pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .on_menu_event(move |app, event| {
             match event.id().as_ref() {
                 "show" => {
-                    if let Some(window) = app.get_webview_window("overlay") {
-                        window.hide().ok();
-                    }
                     if let Some(window) = app.get_webview_window("main") {
                         window.show().ok();
                         window.set_focus().ok();
                     }
                 }
                 "quick_add" => {
-                    // Quick add functionality - could emit an event to the main window
                     if let Some(window) = app.get_webview_window("main") {
                         window.show().ok();
                         window.set_focus().ok();
@@ -56,9 +52,6 @@ pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             } = event
             {
                 let app = tray.app_handle();
-                if let Some(window) = app.get_webview_window("overlay") {
-                    window.hide().ok();
-                }
                 if let Some(window) = app.get_webview_window("main") {
                     window.show().ok();
                     window.set_focus().ok();

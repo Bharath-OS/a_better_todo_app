@@ -4,29 +4,11 @@ let streakData = { current: 0, best: 0 };
 
 // ============ Title Bar ============
 async function hideMainShowOverlay() {
-  const main = window.__TAURI__.window.getCurrentWindow();
   try {
-    const { getAllWindows } = window.__TAURI__.window;
-    const windows = await getAllWindows();
-    const overlay = windows.find(w => w.label === 'overlay');
-    if (overlay) {
-      const monitor = await overlay.currentMonitor();
-      if (monitor) {
-        const mSize = monitor.size;
-        const scale = monitor.scaleFactor;
-        const x = (mSize.width / scale) - 168 - 16;
-        const y = 16;
-        await overlay.setPosition({ type: 'Logical', x, y });
-      } else {
-        await overlay.setPosition({ type: 'Logical', x: 16, y: 16 });
-      }
-      await overlay.show();
-      await overlay.setFocus();
-    }
+    await window.__TAURI__.window.getCurrentWindow().hide();
   } catch (e) {
-    console.error('overlay show error:', e);
+    console.error('hide error:', e);
   }
-  await main.hide();
 }
 
 document.getElementById('minimize-btn').onclick = hideMainShowOverlay;

@@ -20,6 +20,17 @@ pub fn run() {
             database.seed_data().ok();
             app.manage(DbState(std::sync::Mutex::new(database)));
 
+            // Position overlay at top-right corner
+            if let Some(overlay) = app.get_webview_window("overlay") {
+                if let Some(monitor) = overlay.current_monitor().ok().flatten() {
+                    let size = monitor.size();
+                    let scale = monitor.scale_factor();
+                    let x = size.width as f64 / scale - 168.0 - 16.0;
+                    let y = 16.0;
+                    let _ = overlay.set_position(tauri::LogicalPosition::new(x, y));
+                }
+            }
+
             tray::setup_tray(app)?;
 
             // Listen for window close events (hide instead of close)
@@ -30,12 +41,6 @@ pub fn run() {
                         api.prevent_close();
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let _ = window.hide();
-                        }
-                        // Show overlay
-                        if let Some(overlay) = app_handle.get_webview_window("overlay") {
-                            overlay_position(&app_handle);
-                            let _ = overlay.show();
-                            let _ = overlay.set_focus();
                         }
                     }
                 });
@@ -64,16 +69,4 @@ pub fn run() {
         });
 }
 
-fn overlay_position(app_handle: &tauri::AppHandle) {
-    if let Some(overlay) = app_handle.get_webview_window("overlay") {
-        use tauri::LogicalPosition;
-        // Position at top-right corner with 16px inset
-        if let Some(monitor) = overlay.current_monitor().ok().flatten() {
-            let size = monitor.size();
-            let scale = monitor.scale_factor();
-            let x = size.width as f64 / scale - 168.0 - 16.0;
-            let y = 16.0;
-            let _ = overlay.set_position(LogicalPosition::new(x, y));
-        }
-    }
-}
+
