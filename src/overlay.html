@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PTC Overlay</title>
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/overlay.css">
+</head>
+<body>
+  <div id="overlay-app">
+    <!-- Collapsed Pill (default state) -->
+    <div id="pill-container">
+      <div id="pill-drag">
+        <div class="status-dot" id="pill-dot"></div>
+        <span id="pill-label">Loading...</span>
+        <span id="pill-streak" style="display:none;">&#128293; <span id="pill-streak-count">0</span></span>
+      </div>
+      <div id="pill-peek-extras" style="display:none;">
+        <div id="pill-divider"></div>
+        <button class="pill-close-btn" id="pill-close-btn">&#10005;</button>
+      </div>
+    </div>
+
+    <!-- Expanded Panel -->
+    <div id="panel-container">
+      <div id="panel-header">
+        <div class="status-dot" id="panel-dot"></div>
+        <span>PTC &middot; Always on top</span>
+        <div class="header-spacer"></div>
+        <button id="collapse-btn">&#8999;</button>
+      </div>
+
+      <div id="panel-tabs">
+        <button class="panel-tab active" data-period="daily">Daily (0)</button>
+        <button class="panel-tab" data-period="weekly">Weekly (0)</button>
+        <button class="panel-tab" data-period="quarterly">Quarterly (0)</button>
+        <button class="panel-tab" data-period="yearly">Yearly (0)</button>
+      </div>
+
+      <div id="panel-task-list"></div>
+
+      <div id="panel-add-form">
+        <input type="text" id="panel-add-input" placeholder="Add a daily task&hellip;">
+        <button id="panel-add-btn">+</button>
+      </div>
+
+      <div id="panel-footer">
+        <div id="panel-progress">
+          <div id="panel-progress-fill" style="width:0%"></div>
+        </div>
+        <div id="panel-stats">
+          <span id="panel-count">0/0</span>
+          <span id="panel-streak" style="display:none;">&#128293; 0</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/store.js"></script>
+  <script src="js/overlay.js"></script>
+</body>
+</html>

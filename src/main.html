@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Perpetual Task Companion</title>
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Title Bar -->
+    <div id="titlebar">
+      <div class="titlebar-left">
+        <div class="app-icon">&#10003;</div>
+        <span class="app-title">Perpetual Task Companion</span>
+      </div>
+      <div class="titlebar-right">
+        <button class="titlebar-btn" id="minimize-btn">&#9472;</button>
+        <button class="titlebar-btn" id="maximize-btn">&#9633;</button>
+        <button class="titlebar-btn close" id="close-btn">&#10005;</button>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div id="main-content">
+      <!-- Sidebar -->
+      <nav id="sidebar">
+        <div id="nav-items">
+          <div class="nav-item active" data-view="dashboard" data-icon="&#9632;">
+            <span class="nav-icon">&#9632;</span>
+            <span>Dashboard</span>
+          </div>
+          <div class="nav-item" data-view="daily" data-icon="&#128197;">
+            <span class="nav-icon">&#128197;</span>
+            <span>Daily</span>
+          </div>
+          <div class="nav-item" data-view="weekly" data-icon="&#128200;">
+            <span class="nav-icon">&#128200;</span>
+            <span>Weekly</span>
+          </div>
+          <div class="nav-item" data-view="quarterly" data-icon="&#9873;">
+            <span class="nav-icon">&#9873;</span>
+            <span>Quarterly</span>
+          </div>
+          <div class="nav-item" data-view="yearly" data-icon="&#127758;">
+            <span class="nav-icon">&#127758;</span>
+            <span>Yearly</span>
+          </div>
+          <div class="nav-item" data-view="settings" data-icon="&#9881;">
+            <span class="nav-icon">&#9881;</span>
+            <span>Settings</span>
+          </div>
+        </div>
+        <div id="sidebar-footer">
+          <span class="streak-icon">&#128293;</span>
+          <span>Streak: <span id="streak-count">0</span> days</span>
+        </div>
+      </nav>
+
+      <!-- Content -->
+      <main id="content"></main>
+    </div>
+  </div>
+
+  <script src="js/store.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

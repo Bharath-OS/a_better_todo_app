@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Celebration</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1"></script>
+  <script>
+    const duration = 1500;
+    const end = Date.now() + duration;
+
+    function frame() {
+      confetti({
+        particleCount: 3,
+        angle: 60,
+        spread: 55,
+        origin: { x: 0, y: 0.7 },
+        colors: ['#3B82F6', '#22C55E', '#F59E0B', '#EC4899', '#A855F7']
+      });
+      confetti({
+        particleCount: 3,
+        angle: 120,
+        spread: 55,
+        origin: { x: 1, y: 0.7 },
+        colors: ['#3B82F6', '#22C55E', '#F59E0B', '#EC4899', '#A855F7']
+      });
+
+      if (Date.now() < end) {
+        requestAnimationFrame(frame);
+      }
+    }
+
+    // Center burst
+    confetti({
+      particleCount: 120,
+      spread: 90,
+      origin: { x: 0.5, y: 0.5 },
+      colors: ['#3B82F6', '#22C55E', '#F59E0B', '#EC4899', '#A855F7']
+    });
+
+    // Side bursts
+    frame();
+
+    // Auto-close after animation
+    setTimeout(() => {
+      try { window.close(); } catch(e) {}
+    }, duration + 500);
+  </script>
+</body>
+</html>
