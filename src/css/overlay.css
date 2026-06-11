@@ -156,25 +156,6 @@ html, body {
   background: var(--accent);
 }
 
-#expand-close-btn {
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  color: var(--muted-fg);
-  cursor: pointer;
-  border-radius: 4px;
-  transition: background var(--transition-fast);
-  margin-left: 4px;
-}
-
-#expand-close-btn:hover {
-  background: var(--destructive);
-  color: white;
-}
-
 /* Panel tabs */
 #panel-tabs {
   margin: 8px 12px 0;

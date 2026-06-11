@@ -49,6 +49,7 @@ async function init() {
   applyOverlaySettings();
   const w = measurePillWidth();
   await setWindowSize(w, PILL_HEIGHT);
+  setState('peek');
 }
 
 // ============ Task Loading ============
@@ -169,22 +170,12 @@ function bindEvents() {
     setState('collapsed');
   });
 
-  // Close button in peek extras — show main window AND collapse
+  // Close button in peek — show main window AND collapse
   pillCloseBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
     await restoreMainWindow();
     setState('collapsed');
   });
-
-  // Close button in expanded panel — show main window AND collapse
-  const expandCloseBtn = document.getElementById('expand-close-btn');
-  if (expandCloseBtn) {
-    expandCloseBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      await restoreMainWindow();
-      setState('collapsed');
-    });
-  }
 
   // Tabs
   document.querySelectorAll('.panel-tab').forEach(tab => {
@@ -220,16 +211,21 @@ function bindEvents() {
 function measurePillWidth() {
   let w = 28;
   w += 6;
-  w += pillLabel.offsetWidth || 40;
-  if (pillStreak.style.display !== 'none') {
+  w += 6;
+  w += Math.max(40, pillLabel.offsetWidth || 40);
+  if (streakShown()) {
     w += 6;
-    w += pillStreak.offsetWidth || 30;
+    w += Math.max(20, pillStreak.offsetWidth || 30);
   }
   if (pillPeekExtras.style.display !== 'none') {
     w += 6;
-    w += pillPeekExtras.offsetWidth || 30;
+    w += Math.max(20, pillPeekExtras.offsetWidth || 30);
   }
   return Math.max(w, 60);
+}
+
+function streakShown() {
+  return pillStreak.style.display !== 'none';
 }
 
 function applyOverlaySettings() {
@@ -237,8 +233,10 @@ function applyOverlaySettings() {
   pillContainer.style.opacity = state === 'collapsed' ? opacity : '';
 }
 
-listen('settings-changed', async () => {
-  settings = await getSettings();
+listen('settings-changed', async (event) => {
+  const { key, value } = event.payload || {};
+  if (key) settings[key] = value;
+  if (!key) settings = await getSettings();
   updateStreakDisplay();
   applyOverlaySettings();
   if (state === 'collapsed' || state === 'peek') {

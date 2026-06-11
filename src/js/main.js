@@ -317,7 +317,7 @@ async function renderSettings(container) {
         <span class="settings-label">Hover activation delay</span>
         <div class="settings-control">
           <input type="range" id="setting-delay" min="0" max="2000" value="${settings.hover_delay_ms || 1200}" step="100">
-          <span class="range-value" id="delay-value">${settings.hover_delay_ms || 1200}ms</span>
+          <span class="range-value" id="delay-value">${((settings.hover_delay_ms || 1200) / 1000).toFixed(1)}s</span>
         </div>
       </div>
       <div class="settings-row">
@@ -352,7 +352,7 @@ async function renderSettings(container) {
     updateSetting('collapsed_opacity', (parseInt(e.target.value) / 100).toFixed(2));
   };
   document.getElementById('setting-delay').oninput = (e) => {
-    document.getElementById('delay-value').textContent = e.target.value + 'ms';
+    document.getElementById('delay-value').textContent = (parseInt(e.target.value) / 1000).toFixed(1) + 's';
     updateSetting('hover_delay_ms', e.target.value);
   };
   document.getElementById('setting-streak').onchange = (e) => updateSetting('show_streak', e.target.checked ? 'true' : 'false');
