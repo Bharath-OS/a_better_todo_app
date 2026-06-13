@@ -159,3 +159,81 @@ pub fn reset_data(app_handle: tauri::AppHandle, db: State<DbState>) -> Result<()
     let _ = app_handle.emit("tasks-changed", ());
     Ok(())
 }
+
+/// Returns whether the cursor is currently within the given rectangle (logical pixels)
+/// relative to the specified window's client area. Used for selective click-through.
+#[tauri::command]
+pub async fn cursor_over_rect(app: tauri::AppHandle, label: String, rx: f64, ry: f64, rw: f64, rh: f64) -> Result<bool, String> {
+    let win = app.get_webview_window(&label).ok_or("window not found")?;
+    let cursor = win.cursor_position().map_err(|e| e.to_string())?;
+    let scale = win.scale_factor().unwrap_or(1.0);
+    let cx = cursor.x as f64 / scale;
+    let cy = cursor.y as f64 / scale;
+    Ok(point_in_rect(cx, cy, rx, ry, rw, rh))
+}
+
+fn point_in_rect(cx: f64, cy: f64, rx: f64, ry: f64, rw: f64, rh: f64) -> bool {
+    cx >= rx && cx <= rx + rw && cy >= ry && cy <= ry + rh
+}
+
+#[cfg(test)]
+mod hit_tests {
+    use super::*;
+
+    #[test]
+    fn test_point_inside_rect() {
+        assert!(point_in_rect(150.0, 200.0, 100.0, 100.0, 300.0, 200.0));
+    }
+
+    #[test]
+    fn test_point_outside_rect_left() {
+        assert!(!point_in_rect(50.0, 200.0, 100.0, 100.0, 300.0, 200.0));
+    }
+
+    #[test]
+    fn test_point_outside_rect_right() {
+        assert!(!point_in_rect(500.0, 200.0, 100.0, 100.0, 300.0, 200.0));
+    }
+
+    #[test]
+    fn test_point_outside_rect_above() {
+        assert!(!point_in_rect(150.0, 50.0, 100.0, 100.0, 300.0, 200.0));
+    }
+
+    #[test]
+    fn test_point_outside_rect_below() {
+        assert!(!point_in_rect(150.0, 400.0, 100.0, 100.0, 300.0, 200.0));
+    }
+
+    #[test]
+    fn test_point_on_left_edge() {
+        assert!(point_in_rect(100.0, 200.0, 100.0, 100.0, 300.0, 200.0));
+    }
+
+    #[test]
+    fn test_point_on_top_edge() {
+        assert!(point_in_rect(150.0, 100.0, 100.0, 100.0, 300.0, 200.0));
+    }
+
+    #[test]
+    fn test_point_on_right_edge() {
+        assert!(point_in_rect(400.0, 200.0, 100.0, 100.0, 300.0, 200.0));
+    }
+
+    #[test]
+    fn test_point_on_bottom_edge() {
+        assert!(point_in_rect(150.0, 300.0, 100.0, 100.0, 300.0, 200.0));
+    }
+
+    #[test]
+    fn test_negative_coordinates() {
+        assert!(point_in_rect(-50.0, -50.0, -100.0, -100.0, 200.0, 200.0));
+        assert!(!point_in_rect(-150.0, -50.0, -100.0, -100.0, 200.0, 200.0));
+    }
+
+    #[test]
+    fn test_zero_size_rect() {
+        assert!(point_in_rect(100.0, 100.0, 100.0, 100.0, 0.0, 0.0));
+        assert!(!point_in_rect(101.0, 100.0, 100.0, 100.0, 0.0, 0.0));
+    }
+}

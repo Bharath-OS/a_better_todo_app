@@ -1,13 +1,15 @@
 const PERIOD_KEYS = { d: 'daily', w: 'weekly', q: 'quarterly', y: 'yearly' };
 const input = document.getElementById('task-input');
 const periodBtns = document.querySelectorAll('.period-btn');
+const dialog = document.querySelector('.quick-add-dialog');
 let selectedPeriod = 'daily';
 let closing = false;
+let ignoreEnabled = false;
 
 async function init() {
   const { getCurrentWindow } = window.__TAURI__.window;
   const win = getCurrentWindow();
-  const monitor = await win.currentMonitor;
+  const monitor = await win.primaryMonitor;
   if (monitor) {
     await win.setSize({
       width: Math.round(monitor.size.width / monitor.scaleFactor),
@@ -18,12 +20,34 @@ async function init() {
       y: Math.round(monitor.position.y / monitor.scaleFactor),
     });
   }
+  await win.setIgnoreCursorEvents(false);
   input.focus();
-  document.getElementById('app').addEventListener('click', (e) => {
-    if (e.target === document.getElementById('app')) closeWindow();
-  });
+  requestAnimationFrame(() => setTimeout(pollHitTest, 50));
 }
 init();
+
+async function pollHitTest() {
+  const { getCurrentWindow } = window.__TAURI__.window;
+  const win = getCurrentWindow();
+  if (closing) return;
+  const rect = dialog.getBoundingClientRect();
+  const ready = rect.width > 50 && rect.height > 50;
+  try {
+    const over = ready && await window.__TAURI__.core.invoke('cursor_over_rect', {
+      label: 'quick-add',
+      rx: rect.x, ry: rect.y,
+      rw: rect.width, rh: rect.height,
+    });
+    const shouldIgnore = ready && !over;
+    if (shouldIgnore !== ignoreEnabled) {
+      ignoreEnabled = shouldIgnore;
+      await win.setIgnoreCursorEvents(shouldIgnore);
+    }
+  } catch (e) {
+    // window might be closing
+  }
+  setTimeout(pollHitTest, 80);
+}
 
 periodBtns.forEach(btn => {
   btn.addEventListener('click', () => {
