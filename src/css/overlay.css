@@ -20,7 +20,7 @@ html, body {
 #pill-container {
   position: fixed;
   top: 16px;
-  right: 16px;
+  left: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: space-evenly;
@@ -32,11 +32,13 @@ html, body {
   box-shadow: var(--shadow-overlay);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  cursor: default;
+  cursor: grab;
   white-space: nowrap;
   transition: background 180ms ease, box-shadow 180ms ease;
   pointer-events: auto;
   z-index: 100;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 #pill-container.peek {
@@ -116,8 +118,6 @@ html, body {
 /* ============ Expanded Panel ============ */
 #panel-container {
   position: fixed;
-  top: 16px;
-  right: 16px;
   width: 340px;
   height: 560px;
   background: rgba(255, 255, 255, 0.92);

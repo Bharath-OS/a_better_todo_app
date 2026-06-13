@@ -5,10 +5,16 @@ let tasks = [];
 let settings = {};
 let peekTimer = null;
 
+// Pill position state (in screen coordinates)
+let pillPos = { x: 16, y: 16 };
+let isDraggingPill = false;
+let dragOffset = { x: 0, y: 0 };
 
 const PILL_HEIGHT = 32;
+const PILL_WIDTH = 168; // approximate
 const PANEL_WIDTH = 340;
 const PANEL_HEIGHT = 560;
+const INSET = 16;
 
 const appWindow = window.__TAURI__.window.getCurrentWindow();
 const mainWindowLabel = 'main';
@@ -92,39 +98,59 @@ async function setState(newState) {
     pillContainer.style.display = 'none';
     panelContainer.style.display = 'flex';
     pillContainer.classList.add('state-expanded');
-    updatePositioning();
+    calculatePanelPosition();
     renderTaskList();
     updateFooter();
   }
 }
 
-function updatePositioning() {
-  const corner = settings.overlay_corner || 'tr';
-  const inset = 16;
-  const elements = [pillContainer, panelContainer];
+function calculatePanelPosition() {
+  // Get screen dimensions
+  const screenW = window.innerWidth;
+  const screenH = window.innerHeight;
   
-  elements.forEach(el => {
-    // Reset all positions
-    el.style.top = '';
-    el.style.bottom = '';
-    el.style.left = '';
-    el.style.right = '';
-    
-    // Apply corner positioning
-    if (corner === 'tr') {
-      el.style.top = inset + 'px';
-      el.style.right = inset + 'px';
-    } else if (corner === 'tl') {
-      el.style.top = inset + 'px';
-      el.style.left = inset + 'px';
-    } else if (corner === 'br') {
-      el.style.bottom = inset + 'px';
-      el.style.right = inset + 'px';
-    } else if (corner === 'bl') {
-      el.style.bottom = inset + 'px';
-      el.style.left = inset + 'px';
-    }
-  });
+  // Pill position and dimensions
+  const pillX = pillPos.x;
+  const pillY = pillPos.y;
+  
+  // Calculate available space in each direction
+  const spaceAbove = pillY;
+  const spaceBelow = screenH - (pillY + PILL_HEIGHT);
+  const spaceLeft = pillX;
+  const spaceRight = screenW - (pillX + PILL_WIDTH);
+  
+  let panelX = pillX;
+  let panelY = pillY;
+  
+  // Determine horizontal position (prioritize right, then left)
+  if (spaceRight >= PANEL_WIDTH) {
+    // Expand to the right
+    panelX = pillX + PILL_WIDTH;
+  } else if (spaceLeft >= PANEL_WIDTH) {
+    // Expand to the left
+    panelX = pillX - PANEL_WIDTH;
+  } else {
+    // Not enough space on sides, position to avoid going off screen
+    panelX = Math.max(INSET, Math.min(pillX, screenW - PANEL_WIDTH - INSET));
+  }
+  
+  // Determine vertical position (prioritize down, then up)
+  if (spaceBelow >= PANEL_HEIGHT) {
+    // Expand downward
+    panelY = pillY + PILL_HEIGHT;
+  } else if (spaceAbove >= PANEL_HEIGHT) {
+    // Expand upward
+    panelY = pillY - PANEL_HEIGHT;
+  } else {
+    // Not enough space, position to avoid going off screen
+    panelY = Math.max(INSET, Math.min(pillY, screenH - PANEL_HEIGHT - INSET));
+  }
+  
+  // Apply positioning
+  panelContainer.style.left = Math.round(panelX) + 'px';
+  panelContainer.style.top = Math.round(panelY) + 'px';
+  panelContainer.style.right = 'auto';
+  panelContainer.style.bottom = 'auto';
 }
 
 // ============ Events ============
@@ -146,8 +172,9 @@ function bindEvents() {
     }
   });
 
-  // Pill click -> expanded
+  // Pill click -> expanded (only if not dragging)
   pillContainer.addEventListener('click', (e) => {
+    if (isDraggingPill) return; // Don't expand if we were just dragging
     if (e.target.closest('.pill-close-btn')) return;
     if (state === 'peek' || state === 'collapsed') setState('expanded');
   });
@@ -190,12 +217,14 @@ function bindEvents() {
     if (e.key === 'Escape' && state === 'expanded') setState('collapsed');
   });
 
-  // Drag (on pill drag area or panel header)
-  const dragTargets = [pillDrag, document.getElementById('panel-header')];
-  dragTargets.forEach(el => {
-    if (!el) return;
-    el.addEventListener('mousedown', startDrag);
-  });
+  // Pill drag (custom drag, not Tauri's)
+  pillContainer.addEventListener('mousedown', startPillDrag);
+  
+  // Panel drag (on panel header)
+  const panelHeader = document.getElementById('panel-header');
+  if (panelHeader) {
+    panelHeader.addEventListener('mousedown', startPanelDrag);
+  }
 }
 
 // ============ Settings Sync ============
@@ -222,7 +251,6 @@ function streakShown() {
 function applyOverlaySettings() {
   const opacity = parseFloat(settings.collapsed_opacity || '0.6');
   pillContainer.style.opacity = state !== 'expanded' ? opacity : '';
-  updatePositioning();
 }
 
 listen('settings-changed', async (event) => {
@@ -233,23 +261,70 @@ listen('settings-changed', async (event) => {
   applyOverlaySettings();
 });
 
-// ============ Drag ============
+// ============ Drag & Drop ============
 let dragStartPos = null;
 
-function startDrag(e) {
-  if (e.target.closest('button')) return;
-  dragStartPos = { x: e.screenX, y: e.screenY };
-  document.addEventListener('mousemove', onDragMove);
-  document.addEventListener('mouseup', stopDrag);
+function startPillDrag(e) {
+  if (e.target.closest('button')) return; // Don't drag when clicking buttons
+  if (state !== 'collapsed' && state !== 'peek') return; // Only drag when not expanded
+  
+  isDraggingPill = true;
+  dragStartPos = { x: e.clientX, y: e.clientY };
+  dragOffset = {
+    x: e.clientX - pillPos.x,
+    y: e.clientY - pillPos.y
+  };
+  
+  pillContainer.style.cursor = 'grabbing';
+  document.addEventListener('mousemove', onPillDragMove);
+  document.addEventListener('mouseup', stopPillDrag);
+  e.preventDefault();
 }
 
-async function onDragMove(e) {
+function onPillDragMove(e) {
+  if (!isDraggingPill) return;
+  
+  const screenW = window.innerWidth;
+  const screenH = window.innerHeight;
+  
+  // Calculate new position
+  let newX = e.clientX - dragOffset.x;
+  let newY = e.clientY - dragOffset.y;
+  
+  // Clamp to screen bounds
+  newX = Math.max(INSET, Math.min(newX, screenW - PILL_WIDTH - INSET));
+  newY = Math.max(INSET, Math.min(newY, screenH - PILL_HEIGHT - INSET));
+  
+  // Update pill position
+  pillPos.x = newX;
+  pillPos.y = newY;
+  pillContainer.style.left = newX + 'px';
+  pillContainer.style.top = newY + 'px';
+}
+
+function stopPillDrag() {
+  if (!isDraggingPill) return;
+  isDraggingPill = false;
+  pillContainer.style.cursor = 'grab';
+  document.removeEventListener('mousemove', onPillDragMove);
+  document.removeEventListener('mouseup', stopPillDrag);
+  dragStartPos = null;
+}
+
+function startPanelDrag(e) {
+  if (e.target.closest('button')) return;
+  dragStartPos = { x: e.screenX, y: e.screenY };
+  document.addEventListener('mousemove', onPanelDragMove);
+  document.addEventListener('mouseup', stopPanelDrag);
+}
+
+async function onPanelDragMove(e) {
   if (!dragStartPos) return;
   const dx = e.screenX - dragStartPos.x;
   const dy = e.screenY - dragStartPos.y;
   if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-    document.removeEventListener('mousemove', onDragMove);
-    document.removeEventListener('mouseup', stopDrag);
+    document.removeEventListener('mousemove', onPanelDragMove);
+    document.removeEventListener('mouseup', stopPanelDrag);
     dragStartPos = null;
     try {
       await appWindow.startDragging();
@@ -259,10 +334,10 @@ async function onDragMove(e) {
   }
 }
 
-function stopDrag() {
+function stopPanelDrag() {
   dragStartPos = null;
-  document.removeEventListener('mousemove', onDragMove);
-  document.removeEventListener('mouseup', stopDrag);
+  document.removeEventListener('mousemove', onPanelDragMove);
+  document.removeEventListener('mouseup', stopPanelDrag);
 }
 
 // ============ Task List Rendering ============
