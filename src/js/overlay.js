@@ -83,66 +83,48 @@ async function setState(newState) {
     pillPeekExtras.style.display = 'none';
     pillContainer.style.width = '';
     applyOverlaySettings();
-    const w = measurePillWidth();
-    await setWindowSize(w, PILL_HEIGHT);
   } else if (newState === 'peek') {
     pillContainer.classList.add('state-peek');
     pillPeekExtras.style.display = 'flex';
     pillContainer.style.width = '';
     applyOverlaySettings();
-    const w = measurePillWidth();
-    await setWindowSize(w, PILL_HEIGHT);
   } else if (newState === 'expanded') {
     pillContainer.style.display = 'none';
     panelContainer.style.display = 'flex';
     pillContainer.classList.add('state-expanded');
-    await setWindowSize(PANEL_WIDTH, PANEL_HEIGHT);
+    updatePositioning();
     renderTaskList();
     updateFooter();
   }
 }
 
-async function setWindowSize(w, h) {
-  try {
-    const monitor = await appWindow.currentMonitor;
-    const inset = 16;
-    let x = inset, y = inset;
-    const corner = settings.overlay_corner || 'tr';
-    if (monitor) {
-      const pos = monitor.position;
-      const sz = monitor.size;
-      const scale = monitor.scaleFactor;
-      const screenW = sz.width / scale;
-      const screenH = sz.height / scale;
-      const left = pos.x / scale;
-      const top = pos.y / scale;
-      if (corner === 'tr') {
-        x = left + screenW - w - inset; y = top + inset;
-      } else if (corner === 'tl') {
-        x = left + inset; y = top + inset;
-      } else if (corner === 'br') {
-        x = left + screenW - w - inset; y = top + screenH - h - inset;
-      } else if (corner === 'bl') {
-        x = left + inset; y = top + screenH - h - inset;
-      }
-    } else {
-      const sw = window.screen.width;
-      const sh = window.screen.height;
-      if (corner === 'tr') {
-        x = sw - w - inset; y = inset;
-      } else if (corner === 'tl') {
-        x = inset; y = inset;
-      } else if (corner === 'br') {
-        x = sw - w - inset; y = sh - h - inset;
-      } else if (corner === 'bl') {
-        x = inset; y = sh - h - inset;
-      }
+function updatePositioning() {
+  const corner = settings.overlay_corner || 'tr';
+  const inset = 16;
+  const elements = [pillContainer, panelContainer];
+  
+  elements.forEach(el => {
+    // Reset all positions
+    el.style.top = '';
+    el.style.bottom = '';
+    el.style.left = '';
+    el.style.right = '';
+    
+    // Apply corner positioning
+    if (corner === 'tr') {
+      el.style.top = inset + 'px';
+      el.style.right = inset + 'px';
+    } else if (corner === 'tl') {
+      el.style.top = inset + 'px';
+      el.style.left = inset + 'px';
+    } else if (corner === 'br') {
+      el.style.bottom = inset + 'px';
+      el.style.right = inset + 'px';
+    } else if (corner === 'bl') {
+      el.style.bottom = inset + 'px';
+      el.style.left = inset + 'px';
     }
-    const result = await window.__TAURI__.core.invoke('resize_overlay', { width: w, height: h, x, y });
-    console.log('invoke OK:', result);
-  } catch (e) {
-    console.error('setWindowSize error:', e);
-  }
+  });
 }
 
 // ============ Events ============
@@ -240,6 +222,7 @@ function streakShown() {
 function applyOverlaySettings() {
   const opacity = parseFloat(settings.collapsed_opacity || '0.6');
   pillContainer.style.opacity = state !== 'expanded' ? opacity : '';
+  updatePositioning();
 }
 
 listen('settings-changed', async (event) => {
@@ -248,9 +231,6 @@ listen('settings-changed', async (event) => {
   if (!key) settings = await getSettings();
   await updateStreakDisplay();
   applyOverlaySettings();
-  const w = state === 'expanded' ? PANEL_WIDTH : measurePillWidth();
-  const h = state === 'expanded' ? PANEL_HEIGHT : PILL_HEIGHT;
-  await setWindowSize(w, h);
 });
 
 // ============ Drag ============

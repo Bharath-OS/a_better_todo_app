@@ -21,9 +21,9 @@ fn create_overlay(app_handle: &tauri::AppHandle) {
     .transparent(true)
     .always_on_top(true)
     .skip_taskbar(true)
+    .fullscreen(true)
     .visible(true)
     .focused(false)
-    .inner_size(168.0, 32.0)
     .build();
 }
 
@@ -80,6 +80,7 @@ pub fn run() {
                         .transparent(true)
                         .always_on_top(true)
                         .skip_taskbar(true)
+                        .fullscreen(true)
                         .visible(true)
                         .focused(true)
                         .build();

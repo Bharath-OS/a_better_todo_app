@@ -8,15 +8,19 @@ html, body {
 }
 
 #overlay-app {
+  position: fixed;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
-  display: flex;
-  flex-direction: column;
+  pointer-events: none;
 }
 
 /* ============ Collapsed Pill ============ */
 #pill-container {
-  position: relative;
+  position: fixed;
+  top: 16px;
+  right: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: space-evenly;
@@ -31,6 +35,8 @@ html, body {
   cursor: default;
   white-space: nowrap;
   transition: background 180ms ease, box-shadow 180ms ease;
+  pointer-events: auto;
+  z-index: 100;
 }
 
 #pill-container.peek {
@@ -109,6 +115,9 @@ html, body {
 
 /* ============ Expanded Panel ============ */
 #panel-container {
+  position: fixed;
+  top: 16px;
+  right: 16px;
   width: 340px;
   height: 560px;
   background: rgba(255, 255, 255, 0.92);
@@ -119,6 +128,8 @@ html, body {
   display: none;
   flex-direction: column;
   overflow: hidden;
+  pointer-events: auto;
+  z-index: 101;
 }
 
 #panel-container.visible {

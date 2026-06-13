@@ -4,50 +4,24 @@ const periodBtns = document.querySelectorAll('.period-btn');
 const dialog = document.querySelector('.quick-add-dialog');
 let selectedPeriod = 'daily';
 let closing = false;
-let ignoreEnabled = false;
 
 async function init() {
   const { getCurrentWindow } = window.__TAURI__.window;
   const win = getCurrentWindow();
-  const monitor = await win.primaryMonitor;
-  if (monitor) {
-    await win.setSize({
-      width: Math.round(monitor.size.width / monitor.scaleFactor),
-      height: Math.round(monitor.size.height / monitor.scaleFactor),
-    });
-    await win.setPosition({
-      x: Math.round(monitor.position.x / monitor.scaleFactor),
-      y: Math.round(monitor.position.y / monitor.scaleFactor),
-    });
-  }
+  
   await win.setIgnoreCursorEvents(false);
   input.focus();
-  requestAnimationFrame(() => setTimeout(pollHitTest, 50));
+  
+  // Close window when clicking outside the dialog
+  document.getElementById('app').addEventListener('click', (e) => {
+    if (e.target.id === 'app' || e.target.classList.contains('overlay')) {
+      closeWindow();
+    }
+  });
 }
 init();
 
-async function pollHitTest() {
-  const { getCurrentWindow } = window.__TAURI__.window;
-  const win = getCurrentWindow();
-  if (closing) return;
-  const rect = dialog.getBoundingClientRect();
-  const ready = rect.width > 50 && rect.height > 50;
-  try {
-    const over = ready && await window.__TAURI__.core.invoke('cursor_over_rect', {
-      label: 'quick-add',
-      rx: rect.x, ry: rect.y,
-      rw: rect.width, rh: rect.height,
-    });
-    const shouldIgnore = ready && !over;
-    if (shouldIgnore !== ignoreEnabled) {
-      ignoreEnabled = shouldIgnore;
-      await win.setIgnoreCursorEvents(shouldIgnore);
-    }
-  } catch (e) {
-    // window might be closing
-  }
-  setTimeout(pollHitTest, 80);
-}
+
 
 periodBtns.forEach(btn => {
   btn.addEventListener('click', () => {
