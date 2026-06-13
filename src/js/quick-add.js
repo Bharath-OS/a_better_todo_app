@@ -19,6 +19,9 @@ async function init() {
     });
   }
   input.focus();
+  document.getElementById('app').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('app')) closeWindow();
+  });
 }
 init();
 
