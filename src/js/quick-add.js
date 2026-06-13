@@ -1,6 +1,7 @@
 const PERIOD_KEYS = { d: 'daily', w: 'weekly', q: 'quarterly', y: 'yearly' };
 const input = document.getElementById('task-input');
 const periodBtns = document.querySelectorAll('.period-btn');
+const dialog = document.querySelector('.quick-add-dialog');
 let selectedPeriod = 'daily';
 let closing = false;
 
@@ -19,11 +20,38 @@ async function init() {
       y: Math.round(monitor.position.y / monitor.scaleFactor),
     });
   }
-  // Clicks outside the dialog pass through to the main window
-  await win.setIgnoreCursorEvents(true).catch(() => {});
+  // Start with cursor events enabled so the dialog is interactive
+  await win.setIgnoreCursorEvents(false);
   input.focus();
+  // Poll cursor position to toggle click-through on transparent areas only
+  pollHitTest();
 }
 init();
+
+// Poll every 100ms: enable click-through when cursor is outside the dialog,
+// disable it when cursor is over the dialog
+let lastIgnore = false;
+
+async function pollHitTest() {
+  const { getCurrentWindow } = window.__TAURI__.window;
+  const win = getCurrentWindow();
+  const rect = dialog.getBoundingClientRect();
+  try {
+    const over = await window.__TAURI__.core.invoke('cursor_over_rect', {
+      label: 'quick-add',
+      rx: rect.x, ry: rect.y,
+      rw: rect.width, rh: rect.height,
+    });
+    const shouldIgnore = !over;
+    if (shouldIgnore !== lastIgnore) {
+      lastIgnore = shouldIgnore;
+      await win.setIgnoreCursorEvents(shouldIgnore);
+    }
+  } catch (e) {
+    // window might be closing
+  }
+  setTimeout(pollHitTest, 100);
+}
 
 periodBtns.forEach(btn => {
   btn.addEventListener('click', () => {
