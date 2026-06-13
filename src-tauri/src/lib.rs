@@ -6,9 +6,6 @@ use commands::DbState;
 use db::Database;
 use tauri::Manager;
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
-use std::sync::atomic::{AtomicBool, Ordering};
-
-static OVERLAY_PENDING: AtomicBool = AtomicBool::new(false);
 
 fn create_overlay(app_handle: &tauri::AppHandle) {
     if app_handle.get_webview_window("overlay").is_some() {
@@ -37,30 +34,18 @@ fn destroy_overlay(app_handle: &tauri::AppHandle) {
 }
 
 fn update_overlay(app_handle: &tauri::AppHandle) {
-    // Check if a quick-add or confetti window is active — don't create overlay during brief focus changes
-    let has_transient = app_handle.get_webview_window("quick-add").is_some()
-        || app_handle.get_webview_window("overlay").is_some();
     let show_overlay = {
         if let Some(main) = app_handle.get_webview_window("main") {
             let visible = main.is_visible().unwrap_or(true);
             let minimized = main.is_minimized().unwrap_or(false);
-            let focused = main.is_focused().unwrap_or(true);
-            !(visible && !minimized && focused)
+            !visible || minimized
         } else {
             false
         }
     };
-    if show_overlay && !has_transient {
-        // Debounce: only create overlay on next event loop iteration
-        if OVERLAY_PENDING.swap(true, Ordering::SeqCst) == false {
-            let h = app_handle.clone();
-            let _ = app_handle.run_on_main_thread(move || {
-                OVERLAY_PENDING.store(false, Ordering::SeqCst);
-                create_overlay(&h);
-            });
-        }
+    if show_overlay {
+        create_overlay(app_handle);
     } else {
-        OVERLAY_PENDING.store(false, Ordering::SeqCst);
         destroy_overlay(app_handle);
     }
 }
