@@ -152,7 +152,6 @@ pub fn run() {
             commands::resize_overlay,
             commands::exit_app,
             commands::close_overlay_and_show_main,
-            commands::cursor_over_rect,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

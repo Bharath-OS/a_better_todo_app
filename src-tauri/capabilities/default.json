@@ -23,7 +23,6 @@
     "core:window:allow-get-all-windows",
     "core:window:allow-is-minimized",
     "core:window:allow-is-visible",
-    "core:window:allow-set-ignore-cursor-events",
     "core:webview:allow-create-webview-window",
     "core:event:default",
     "core:event:allow-emit",
