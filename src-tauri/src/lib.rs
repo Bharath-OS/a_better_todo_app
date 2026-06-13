@@ -71,34 +71,36 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(move |app, shortcut, event| {
-                    eprintln!("Shortcut event: key={:?} state={:?}", shortcut, event.state);
+                .with_handler(move |app, _shortcut, event| {
                     if event.state != tauri_plugin_global_shortcut::ShortcutState::Pressed {
                         return;
                     }
                     if app.get_webview_window("quick-add").is_some() {
-                        eprintln!("Quick-add window already exists, skipping");
                         return;
                     }
-                    eprintln!("Creating quick-add window...");
-                    match tauri::WebviewWindowBuilder::new(
-                        app,
-                        "quick-add",
-                        tauri::WebviewUrl::App("quick-add.html".into()),
-                    )
-                    .title("Quick Add")
-                    .decorations(false)
-                    .transparent(true)
-                    .always_on_top(true)
-                    .skip_taskbar(true)
-                    .inner_size(420.0, 114.0)
-                    .visible(true)
-                    .focused(true)
-                    .center()
-                    .build() {
-                        Ok(_) => eprintln!("Quick-add window created successfully"),
-                        Err(e) => eprintln!("Failed to create quick-add window: {:?}", e),
-                    }
+                    // Defer window creation to next event loop iteration so the
+                    // shortcut handler returns immediately and doesn't block.
+                    let h = app.clone();
+                    let _ = app.run_on_main_thread(move || {
+                        if h.get_webview_window("quick-add").is_some() {
+                            return;
+                        }
+                        let _ = tauri::WebviewWindowBuilder::new(
+                            &h,
+                            "quick-add",
+                            tauri::WebviewUrl::App("quick-add.html".into()),
+                        )
+                        .title("Quick Add")
+                        .decorations(false)
+                        .transparent(true)
+                        .always_on_top(true)
+                        .skip_taskbar(true)
+                        .inner_size(420.0, 114.0)
+                        .visible(true)
+                        .focused(true)
+                        .center()
+                        .build();
+                    });
                 })
                 .build(),
         )

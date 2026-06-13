@@ -264,19 +264,27 @@ impl Database {
 
         let mut current: i64 = 0;
         let mut best: i64 = 0;
+        let mut run: i64 = 0;
+
         for i in 0..365 {
             let date = (chrono::Utc::now() - chrono::Duration::days(i))
                 .format("%Y-%m-%d")
                 .to_string();
             match history.get(&date) {
                 Some((total, completed)) if *total > 0 && *completed >= *total => {
-                    current += 1;
-                    if current > best { best = current; }
+                    run += 1;
+                    if run > best { best = run; }
                 }
-                _ if i == 0 => continue,
-                _ => break,
+                _ => {
+                    if i == 0 { continue; }
+                    // Only the current streak (from today backward) goes into `current`
+                    if current == 0 { current = run; }
+                    run = 0;
+                }
             }
         }
+        // If the streak is still ongoing through day 365
+        if current == 0 { current = run; }
 
         Ok(StreakData { current, best })
     }
@@ -396,6 +404,14 @@ mod tests {
         }
     }
 
+    fn insert_history(db: &Database, date: &str, total: i64, completed: i64) {
+        let conn = db.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO daily_history (date, total, completed) VALUES (?1, ?2, ?3)",
+            rusqlite::params![date, total, completed],
+        ).unwrap();
+    }
+
     #[test]
     fn test_create_and_get_tasks() {
         let db = test_db();
@@ -481,6 +497,73 @@ mod tests {
         let streak = db.get_streak().unwrap();
         assert_eq!(streak.current, 0);
         assert_eq!(streak.best, 0);
+    }
+
+    #[test]
+    fn test_streak_single_day_completed() {
+        let db = test_db();
+        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        insert_history(&db, &today, 3, 3);
+        let streak = db.get_streak().unwrap();
+        assert_eq!(streak.current, 1);
+        assert_eq!(streak.best, 1);
+    }
+
+    #[test]
+    fn test_streak_single_day_incomplete() {
+        let db = test_db();
+        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        insert_history(&db, &today, 2, 1);
+        let streak = db.get_streak().unwrap();
+        assert_eq!(streak.current, 0);
+        assert_eq!(streak.best, 0);
+    }
+
+    #[test]
+    fn test_streak_three_days() {
+        let db = test_db();
+
+        for i in (0..3).rev() {
+            let date = (chrono::Utc::now() - chrono::Duration::days(i))
+                .format("%Y-%m-%d").to_string();
+            insert_history(&db, &date, 1, 1);
+        }
+        let streak = db.get_streak().unwrap();
+        assert_eq!(streak.current, 3);
+        assert_eq!(streak.best, 3);
+    }
+
+    #[test]
+    fn test_streak_broken_yesterday() {
+        let db = test_db();
+        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        let yesterday = (chrono::Utc::now() - chrono::Duration::days(1))
+            .format("%Y-%m-%d").to_string();
+        insert_history(&db, &today, 2, 2);
+        insert_history(&db, &yesterday, 1, 0);
+
+        let streak = db.get_streak().unwrap();
+        assert_eq!(streak.current, 1);
+        assert_eq!(streak.best, 1);
+    }
+
+    #[test]
+    fn test_streak_best_greater_than_current() {
+        let db = test_db();
+
+        // 3-day streak ending 5 days ago (best = 3)
+        for i in 5..8 {
+            let date = (chrono::Utc::now() - chrono::Duration::days(i))
+                .format("%Y-%m-%d").to_string();
+            insert_history(&db, &date, 1, 1);
+        }
+        // Today also completed (current = 1, but best should be 3)
+        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        insert_history(&db, &today, 1, 1);
+
+        let streak = db.get_streak().unwrap();
+        assert_eq!(streak.current, 1);
+        assert_eq!(streak.best, 3);
     }
 
     #[test]

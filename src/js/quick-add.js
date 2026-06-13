@@ -2,12 +2,9 @@ const PERIOD_KEYS = { d: 'daily', w: 'weekly', q: 'quarterly', y: 'yearly' };
 const input = document.getElementById('task-input');
 const periodBtns = document.querySelectorAll('.period-btn');
 let selectedPeriod = 'daily';
+let closing = false;
 
 input.focus();
-
-setTimeout(() => {
-  window.addEventListener('blur', () => closeWindow());
-}, 0);
 
 periodBtns.forEach(btn => {
   btn.addEventListener('click', () => {
@@ -29,6 +26,8 @@ async function submit() {
 }
 
 function closeWindow() {
+  if (closing) return;
+  closing = true;
   try {
     const { getCurrentWindow } = window.__TAURI__.window;
     getCurrentWindow().close();
