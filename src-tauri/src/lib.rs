@@ -80,10 +80,8 @@ pub fn run() {
                         .transparent(true)
                         .always_on_top(true)
                         .skip_taskbar(true)
-                        .inner_size(420.0, 114.0)
                         .visible(true)
                         .focused(true)
-                        .center()
                         .build();
                     });
                 })

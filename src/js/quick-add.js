@@ -4,7 +4,26 @@ const periodBtns = document.querySelectorAll('.period-btn');
 let selectedPeriod = 'daily';
 let closing = false;
 
-input.focus();
+async function init() {
+  const { getCurrentWindow } = window.__TAURI__.window;
+  const win = getCurrentWindow();
+  // Fill the full monitor for a seamless overlay
+  const monitor = await win.currentMonitor;
+  if (monitor) {
+    await win.setSize({
+      width: Math.round(monitor.size.width / monitor.scaleFactor),
+      height: Math.round(monitor.size.height / monitor.scaleFactor),
+    });
+    await win.setPosition({
+      x: Math.round(monitor.position.x / monitor.scaleFactor),
+      y: Math.round(monitor.position.y / monitor.scaleFactor),
+    });
+  }
+  // Clicks outside the dialog pass through to the main window
+  await win.setIgnoreCursorEvents(true).catch(() => {});
+  input.focus();
+}
+init();
 
 periodBtns.forEach(btn => {
   btn.addEventListener('click', () => {

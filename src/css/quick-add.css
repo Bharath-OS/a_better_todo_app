@@ -1,18 +1,25 @@
 html, body {
   background: transparent;
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  border: none;
 }
 
 #app {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100vh;
-  width: 100vw;
+  height: 100%;
+  width: 100%;
+  pointer-events: none;
 }
 
 .quick-add-dialog {
+  pointer-events: auto;
   width: 100%;
-  max-width: 420px;
+  max-width: 480px;
   background: rgba(255,255,255,0.92);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
