@@ -20,38 +20,58 @@ async function init() {
       y: Math.round(monitor.position.y / monitor.scaleFactor),
     });
   }
-  // Start with cursor events enabled so the dialog is interactive
+  // Keep interactive initially — never enable click-through until the
+  // layout is stable and we've confirmed the cursor is truly outside.
   await win.setIgnoreCursorEvents(false);
   input.focus();
-  // Poll cursor position to toggle click-through on transparent areas only
-  pollHitTest();
+  // Wait one frame so the dialog layout is settled, then start polling
+  requestAnimationFrame(() => pollHitTest());
 }
 init();
 
-// Poll every 100ms: enable click-through when cursor is outside the dialog,
-// disable it when cursor is over the dialog
-let lastIgnore = false;
+// ---------- Selective click-through ----------
+// Only enable OS-level click-through (setIgnoreCursorEvents(true)) when
+// the cursor has been outside the dialog for MULTIPLE consecutive polls.
+// This prevents toggling during layout settling or brief cursor movement.
+const POLL_MS = 80;
+const OUTSIDE_THRESHOLD = 3; // require 3 consecutive "outside" readings
+let consecutiveOutside = 0;
+let ignoreEnabled = false;
 
 async function pollHitTest() {
   const { getCurrentWindow } = window.__TAURI__.window;
   const win = getCurrentWindow();
   const rect = dialog.getBoundingClientRect();
+
+  // Guard: don't enable click-through until the dialog has a valid layout
+  const dialogReady = rect.width > 10 && rect.height > 10;
+
   try {
-    const over = await window.__TAURI__.core.invoke('cursor_over_rect', {
+    const over = dialogReady && await window.__TAURI__.core.invoke('cursor_over_rect', {
       label: 'quick-add',
       rx: rect.x, ry: rect.y,
       rw: rect.width, rh: rect.height,
     });
-    const shouldIgnore = !over;
-    if (shouldIgnore !== lastIgnore) {
-      lastIgnore = shouldIgnore;
-      await win.setIgnoreCursorEvents(shouldIgnore);
+
+    if (over) {
+      consecutiveOutside = 0;
+      if (ignoreEnabled) {
+        ignoreEnabled = false;
+        await win.setIgnoreCursorEvents(false);
+      }
+    } else if (dialogReady) {
+      consecutiveOutside++;
+      if (consecutiveOutside >= OUTSIDE_THRESHOLD && !ignoreEnabled) {
+        ignoreEnabled = true;
+        await win.setIgnoreCursorEvents(true);
+      }
     }
   } catch (e) {
     // window might be closing
   }
-  setTimeout(pollHitTest, 100);
+  setTimeout(pollHitTest, POLL_MS);
 }
+// --------------------------------------------
 
 periodBtns.forEach(btn => {
   btn.addEventListener('click', () => {
