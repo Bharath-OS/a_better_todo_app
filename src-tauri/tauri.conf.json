@@ -1,7 +1,7 @@
 {
   "productName": "Todly",
   "version": "0.1.0",
-  "identifier": "com.todly.app",
+  "identifier": "com.todly.desktop",
   "build": {
     "frontendDist": "../src",
     "devUrl": "http://localhost:1422",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Perpetual Task Companion",
+        "title": "Todly",
         "width": 1180,
         "height": 760,
         "minWidth": 900,
