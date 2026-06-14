@@ -16,7 +16,7 @@ fn create_overlay(app_handle: &tauri::AppHandle) {
         "overlay",
         tauri::WebviewUrl::App("overlay.html".into()),
     )
-    .title("Todly Overlay")
+    .title("")
     .decorations(false)
     .transparent(true)
     .always_on_top(true)
@@ -25,29 +25,6 @@ fn create_overlay(app_handle: &tauri::AppHandle) {
     .visible(true)
     .focused(false)
     .build();
-}
-
-fn destroy_overlay(app_handle: &tauri::AppHandle) {
-    if let Some(overlay) = app_handle.get_webview_window("overlay") {
-        let _ = overlay.close();
-    }
-}
-
-fn update_overlay(app_handle: &tauri::AppHandle) {
-    let show_overlay = {
-        if let Some(main) = app_handle.get_webview_window("main") {
-            let visible = main.is_visible().unwrap_or(true);
-            let minimized = main.is_minimized().unwrap_or(false);
-            !visible || minimized
-        } else {
-            false
-        }
-    };
-    if show_overlay {
-        create_overlay(app_handle);
-    } else {
-        destroy_overlay(app_handle);
-    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -111,8 +88,13 @@ pub fn run() {
                 let _ = handle.global_shortcut().register("Ctrl+Alt+T");
             }
 
-            // Manage overlay based on window state
-            let app_handle = app.handle().clone();
+            // Create overlay at startup and keep it visible
+            let overlay_handle = app.handle().clone();
+            let _ = app.handle().run_on_main_thread(move || {
+                create_overlay(&overlay_handle);
+            });
+
+            // Handle main window close (prevent close, just hide)
             if let Some(main_window) = app.get_webview_window("main") {
                 let win_handle = app.handle().clone();
                 main_window.on_window_event(move |event| {
@@ -123,19 +105,10 @@ pub fn run() {
                                 let _ = window.hide();
                             }
                         }
-                        tauri::WindowEvent::Focused(_) => {
-                            update_overlay(&win_handle);
-                        }
                         _ => {}
                     }
                 });
             }
-
-            // One-shot initial check after window is fully initialized on the event loop
-            let init_handle = app.handle().clone();
-            let _ = app_handle.run_on_main_thread(move || {
-                update_overlay(&init_handle);
-            });
 
             Ok(())
         })

@@ -6,8 +6,9 @@ let settings = {};
 let peekTimer = null;
 
 // Pill position state (in screen coordinates)
-let pillPos = { x: 16, y: 16 };
+let pillPos = null; // Will be set in init to top-right
 let isDraggingPill = false;
+let wasDraggingPill = false; // To differentiate click vs drag
 let dragOffset = { x: 0, y: 0 };
 
 const PILL_HEIGHT = 32;
@@ -42,6 +43,14 @@ const collapseBtn = document.getElementById('collapse-btn');
 
 // ============ Init ============
 async function init() {
+  // Initialize pill position to top-right
+  pillPos = { 
+    x: window.innerWidth - PILL_WIDTH - INSET, 
+    y: INSET 
+  };
+  pillContainer.style.left = pillPos.x + 'px';
+  pillContainer.style.top = pillPos.y + 'px';
+  
   try {
     settings = await getSettings();
     await loadTasks();
@@ -174,7 +183,7 @@ function bindEvents() {
 
   // Pill click -> expanded (only if not dragging)
   pillContainer.addEventListener('click', (e) => {
-    if (isDraggingPill) return; // Don't expand if we were just dragging
+    if (wasDraggingPill) return; // Don't expand if we were just dragging
     if (e.target.closest('.pill-close-btn')) return;
     if (state === 'peek' || state === 'collapsed') setState('expanded');
   });
@@ -225,6 +234,16 @@ function bindEvents() {
   if (panelHeader) {
     panelHeader.addEventListener('mousedown', startPanelDrag);
   }
+  
+  // Click outside pill/panel to collapse (handles click-through behavior)
+  document.getElementById('overlay-app').addEventListener('click', (e) => {
+    // If click is directly on overlay-app (outside pill and panel), collapse if expanded
+    if (e.target === document.getElementById('overlay-app')) {
+      if (state === 'expanded') {
+        setState('collapsed');
+      }
+    }
+  });
 }
 
 // ============ Settings Sync ============
@@ -269,6 +288,7 @@ function startPillDrag(e) {
   if (state !== 'collapsed' && state !== 'peek') return; // Only drag when not expanded
   
   isDraggingPill = true;
+  wasDraggingPill = false;
   dragStartPos = { x: e.clientX, y: e.clientY };
   dragOffset = {
     x: e.clientX - pillPos.x,
@@ -284,6 +304,14 @@ function startPillDrag(e) {
 function onPillDragMove(e) {
   if (!isDraggingPill) return;
   
+  if (!wasDraggingPill) {
+    const dx = e.clientX - dragStartPos.x;
+    const dy = e.clientY - dragStartPos.y;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      wasDraggingPill = true;
+    }
+  }
+
   const screenW = window.innerWidth;
   const screenH = window.innerHeight;
   
@@ -471,3 +499,47 @@ function escHtml(str) {
 
 // ============ Boot ============
 init();
+
+// ============ Click-through Polling ============
+let isIgnoringCursor = false;
+setInterval(async () => {
+  try {
+    if (isDraggingPill || dragStartPos) {
+      if (isIgnoringCursor) {
+        isIgnoringCursor = false;
+        await appWindow.setIgnoreCursorEvents(false);
+      }
+      return;
+    }
+
+    const pillW = pillContainer.offsetWidth || measurePillWidth();
+    const overPill = await window.__TAURI__.core.invoke('cursor_over_rect', {
+      label: 'overlay',
+      rx: pillPos.x,
+      ry: pillPos.y,
+      rw: pillW,
+      rh: PILL_HEIGHT
+    });
+
+    let overPanel = false;
+    if (state === 'expanded') {
+      const px = parseInt(panelContainer.style.left) || 0;
+      const py = parseInt(panelContainer.style.top) || 0;
+      overPanel = await window.__TAURI__.core.invoke('cursor_over_rect', {
+        label: 'overlay',
+        rx: px,
+        ry: py,
+        rw: PANEL_WIDTH,
+        rh: PANEL_HEIGHT
+      });
+    }
+
+    const shouldIgnore = !(overPill || overPanel);
+    if (shouldIgnore !== isIgnoringCursor) {
+      isIgnoringCursor = shouldIgnore;
+      await appWindow.setIgnoreCursorEvents(shouldIgnore);
+    }
+  } catch (e) {
+    console.error('click-through poll error:', e);
+  }
+}, 50);
