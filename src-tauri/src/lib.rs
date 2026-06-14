@@ -21,7 +21,9 @@ fn create_overlay(app_handle: &tauri::AppHandle) {
     .transparent(true)
     .always_on_top(true)
     .skip_taskbar(true)
-    .fullscreen(true)
+    .maximized(true)
+    .shadow(false)
+    .resizable(false)
     .visible(true)
     .focused(false)
     .build();
