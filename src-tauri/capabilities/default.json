@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "Default capabilities",
-  "windows": ["main", "overlay", "quick-add"],
+  "windows": ["main", "overlay", "quick-add", "celebration"],
   "permissions": [
     "core:default",
     "core:window:default",

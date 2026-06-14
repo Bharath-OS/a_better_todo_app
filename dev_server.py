@@ -31,6 +31,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.path = '/main.html'
         elif path in ('/quick-add', '/quick-add.html'):
             self.path = '/quick-add.html'
+        elif path in ('/celebration', '/celebration.html'):
+            self.path = '/celebration.html'
         elif path.startswith('/css/') or path.startswith('/js/') or path.startswith('/assets/'):
             pass
         else:
