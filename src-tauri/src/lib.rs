@@ -29,6 +29,30 @@ fn create_overlay(app_handle: &tauri::AppHandle) {
     .build();
 }
 
+fn create_celebration_window(app_handle: &tauri::AppHandle) {
+    if app_handle.get_webview_window("celebration").is_some() {
+        return;
+    }
+    let _ = tauri::WebviewWindowBuilder::new(
+        app_handle,
+        "celebration",
+        tauri::WebviewUrl::App("celebration.html".into()),
+    )
+    .title("")
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .maximized(true)
+    .shadow(false)
+    .resizable(false)
+    .visible(false)
+    .build()
+    .map(|win| {
+        let _ = win.set_ignore_cursor_events(true);
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -90,10 +114,12 @@ pub fn run() {
                 let _ = handle.global_shortcut().register("Ctrl+Alt+T");
             }
 
-            // Create overlay at startup and keep it visible
+            // Create overlay and celebration windows at startup
             let overlay_handle = app.handle().clone();
+            let cel_handle = app.handle().clone();
             let _ = app.handle().run_on_main_thread(move || {
                 create_overlay(&overlay_handle);
+                create_celebration_window(&cel_handle);
             });
 
             // Handle main window close (prevent close, just hide)

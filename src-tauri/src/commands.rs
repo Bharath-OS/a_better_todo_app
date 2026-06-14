@@ -162,24 +162,10 @@ pub fn reset_data(app_handle: tauri::AppHandle, db: State<DbState>) -> Result<()
 
 #[tauri::command]
 pub async fn spawn_celebration_window(app: tauri::AppHandle) -> Result<(), String> {
-    if app.get_webview_window("celebration").is_some() {
-        return Ok(());
+    if let Some(win) = app.get_webview_window("celebration") {
+        let _ = win.show();
+        let _ = win.emit("trigger-celebration", ());
     }
-    let _ = tauri::WebviewWindowBuilder::new(
-        &app,
-        "celebration",
-        tauri::WebviewUrl::App("celebration.html".into()),
-    )
-    .title("")
-    .decorations(false)
-    .transparent(true)
-    .always_on_top(true)
-    .skip_taskbar(true)
-    .maximized(true)
-    .shadow(false)
-    .resizable(false)
-    .build()
-    .map_err(|e| e.to_string())?;
     Ok(())
 }
 

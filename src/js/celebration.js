@@ -1,34 +1,48 @@
-const duration = 1200;
-const end = Date.now() + duration;
-const colors = ['#3B82F6', '#22C55E', '#F59E0B', '#EC4899', '#A855F7'];
+const { listen } = window.__TAURI__.event;
+const { getCurrentWindow } = window.__TAURI__.window;
 
-// Initial burst
-confetti({
-  particleCount: 120,
-  spread: 90,
-  startVelocity: 45,
-  origin: { x: 0.5, y: 0.5 },
-  colors,
-  zIndex: 9999,
-});
+let isAnimating = false;
 
-function frame() {
-  confetti({ particleCount: 6, angle: 60, spread: 65, startVelocity: 55, origin: { x: 0, y: 0.7 }, colors, zIndex: 9999 });
-  confetti({ particleCount: 6, angle: 120, spread: 65, startVelocity: 55, origin: { x: 1, y: 0.7 }, colors, zIndex: 9999 });
-  
-  if (Date.now() < end) {
-    requestAnimationFrame(frame);
-  } else {
-    // Wait for remaining particles to fall
-    setTimeout(() => {
-      try {
-        const { getCurrentWindow } = window.__TAURI__.window;
-        getCurrentWindow().close();
-      } catch (e) {
-        window.close();
-      }
-    }, 1500);
+function startCelebration() {
+  if (isAnimating) return;
+  isAnimating = true;
+
+  const duration = 1200;
+  const end = Date.now() + duration;
+  const colors = ['#3B82F6', '#22C55E', '#F59E0B', '#EC4899', '#A855F7'];
+
+  // Initial burst
+  confetti({
+    particleCount: 120,
+    spread: 90,
+    startVelocity: 45,
+    origin: { x: 0.5, y: 0.5 },
+    colors,
+    zIndex: 9999,
+  });
+
+  function frame() {
+    confetti({ particleCount: 6, angle: 60, spread: 65, startVelocity: 55, origin: { x: 0, y: 0.7 }, colors, zIndex: 9999 });
+    confetti({ particleCount: 6, angle: 120, spread: 65, startVelocity: 55, origin: { x: 1, y: 0.7 }, colors, zIndex: 9999 });
+    
+    if (Date.now() < end) {
+      requestAnimationFrame(frame);
+    } else {
+      // Wait for remaining particles to fall
+      setTimeout(() => {
+        isAnimating = false;
+        try {
+          getCurrentWindow().hide();
+        } catch (e) {
+          console.error(e);
+        }
+      }, 1500);
+    }
   }
+
+  frame();
 }
 
-frame();
+listen('trigger-celebration', () => {
+  startCelebration();
+});
