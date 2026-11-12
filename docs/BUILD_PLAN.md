@@ -47,8 +47,8 @@ Rules:
 
 | # | Slice | Branch | Depends on | Status |
 |--:|-------|--------|------------|--------|
-| 1 | Scaffold (Vite/Svelte/Tauri, `dist`/`index.html`, RGBA icons) | `cursor/feat-scaffold-2cf5` | — | **PR: clippy-clean + build verify** |
-| 2 | DB + local-day time + migrations + tests | `cursor/feat-db-time-2cf5` | 1 | **in progress on development (foundation WIP)** |
+| 1 | Scaffold (Vite/Svelte/Tauri, `dist`/`index.html`, RGBA icons) | `cursor/feat-scaffold-2cf5` | — | **merged into development** |
+| 2 | DB + local-day time + migrations + tests | `cursor/feat-db-time-2cf5` | 1 | **in progress (edge-case TDD)** |
 | 3 | Design tokens + shell chrome (sidebar/nav stubs) | `cursor/feat-shell-tokens-2cf5` | 1 | **in progress on development (foundation WIP)** |
 | 4 | Today view CRUD | `cursor/feat-today-2cf5` | 2, 3 | foundation present; harden via feature PR |
 | 5 | Overlay mechanics (Windows-first) | `cursor/feat-overlay-2cf5` | 1, 2 | foundation present; harden via feature PR |
