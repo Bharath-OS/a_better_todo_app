@@ -1,0 +1,101 @@
+:root {
+  color-scheme: light;
+  --bg: #f7f8fa;
+  --surface: #ffffff;
+  --surface-subtle: #eef1f5;
+  --border: #e3e7ee;
+  --text: #101828;
+  --text-secondary: #5b6574;
+  --text-tertiary: #8a94a3;
+  --accent: #4f6bed;
+  --accent-soft: #e8ecfd;
+  --success: #2fae7b;
+  --success-soft: #e3f5ec;
+  --warning: #f5a524;
+  --warning-soft: #fef3dc;
+  --warning-text: #b86e00;
+  --danger: #e5584f;
+  --danger-soft: #fde9e7;
+  --danger-text: #b3261e;
+  --island: rgba(255, 255, 255, 0.94);
+  --horizon-daily: #4f6bed;
+  --horizon-weekly: #7a5af8;
+  --horizon-monthly: #14a3b8;
+  --horizon-goal: #d6568c;
+  --shadow: 0 8px 24px rgba(16, 24, 40, 0.1);
+  --shadow-lg: 0 16px 40px rgba(16, 24, 40, 0.14);
+  --radius-chip: 8px;
+  --radius-control: 12px;
+  --radius-card: 16px;
+  --radius-dialog: 20px;
+  --font: "Inter", "Segoe UI Variable", "Segoe UI", "SF Pro Text", system-ui, sans-serif;
+  --motion: 280ms;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e1116;
+  --surface: #171b22;
+  --surface-subtle: #1f2430;
+  --border: #2a3140;
+  --text: #f2f4f8;
+  --text-secondary: #a3adbd;
+  --text-tertiary: #78839a;
+  --accent: #7c8fff;
+  --accent-soft: #232b4d;
+  --success: #4cc795;
+  --success-soft: #163326;
+  --warning: #f7b955;
+  --warning-soft: #3a2c10;
+  --warning-text: #f7b955;
+  --danger: #f07a72;
+  --danger-soft: #3b1d1b;
+  --danger-text: #f07a72;
+  --island: rgba(11, 13, 17, 0.94);
+  --horizon-daily: #7c8fff;
+  --horizon-weekly: #9a82fa;
+  --horizon-monthly: #3cc0d3;
+  --horizon-goal: #e57ba8;
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion: 120ms;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: local("Inter"), local("Inter Variable");
+}

@@ -1,21 +1,17 @@
 use tauri::{
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     menu::{MenuBuilder, MenuItemBuilder},
-    Emitter, Manager,
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    App, Manager,
 };
 
-pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    let show = MenuItemBuilder::with_id("show", "Show main window").build(app)?;
-    let quick_add = MenuItemBuilder::with_id("quick_add", "Quick add...").build(app)?;
-    let keep_on_top = MenuItemBuilder::with_id("keep_on_top", "Keep on top")
-        .accelerator("CmdOrCtrl+T")
-        .build(app)?;
-    let quit = MenuItemBuilder::with_id("quit", "Quit Todly").build(app)?;
+pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
+    let show = MenuItemBuilder::with_id("show", "Show").build(app)?;
+    let toggle_overlay = MenuItemBuilder::with_id("toggle_overlay", "Toggle overlay").build(app)?;
+    let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
 
     let menu = MenuBuilder::new(app)
         .item(&show)
-        .item(&quick_add)
-        .item(&keep_on_top)
+        .item(&toggle_overlay)
         .separator()
         .item(&quit)
         .build()?;
@@ -23,26 +19,37 @@ pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let _tray = TrayIconBuilder::new()
         .icon(app.default_window_icon().unwrap().clone())
         .menu(&menu)
-        .on_menu_event(move |app, event| {
-            match event.id().as_ref() {
-                "show" => {
-                    if let Some(window) = app.get_webview_window("main") {
-                        window.show().ok();
-                        window.set_focus().ok();
-                    }
+        .tooltip("Todly")
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "show" => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
                 }
-                "quick_add" => {
-                    if let Some(window) = app.get_webview_window("main") {
-                        window.show().ok();
-                        window.set_focus().ok();
-                        window.emit("quick-add", ()).ok();
-                    }
-                }
-                "quit" => {
-                    app.exit(0);
-                }
-                _ => {}
             }
+            "toggle_overlay" => {
+                if let Some(overlay) = app.get_webview_window("overlay") {
+                    if overlay.is_visible().unwrap_or(true) {
+                        let _ = overlay.hide();
+                        if let Some(ctrl) =
+                            app.try_state::<std::sync::Arc<crate::overlay::OverlayController>>()
+                        {
+                            ctrl.set_visible(false);
+                        }
+                    } else {
+                        let _ = overlay.show();
+                        if let Some(ctrl) =
+                            app.try_state::<std::sync::Arc<crate::overlay::OverlayController>>()
+                        {
+                            ctrl.set_visible(true);
+                        }
+                    }
+                }
+            }
+            "quit" => {
+                app.exit(0);
+            }
+            _ => {}
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
@@ -53,8 +60,8 @@ pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             {
                 let app = tray.app_handle();
                 if let Some(window) = app.get_webview_window("main") {
-                    window.show().ok();
-                    window.set_focus().ok();
+                    let _ = window.show();
+                    let _ = window.set_focus();
                 }
             }
         })

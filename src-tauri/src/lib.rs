@@ -1,139 +1,120 @@
 mod commands;
 mod db;
+mod entitlements;
+mod overlay;
+mod reminders;
+mod time_util;
 mod tray;
 
 use commands::DbState;
 use db::Database;
-use tauri::Manager;
-use tauri_plugin_global_shortcut::GlobalShortcutExt;
+use overlay::OverlayController;
+use parking_lot::Mutex;
+use std::sync::Arc;
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
-fn create_overlay(app_handle: &tauri::AppHandle) {
-    if app_handle.get_webview_window("overlay").is_some() {
-        return;
+pub fn ensure_quick_add(app: &tauri::AppHandle) -> Result<(), String> {
+    if app.get_webview_window("quick-add").is_some() {
+        return Ok(());
     }
-    let _ = tauri::WebviewWindowBuilder::new(
-        app_handle,
-        "overlay",
-        tauri::WebviewUrl::App("overlay.html".into()),
-    )
-    .title("")
-    .decorations(false)
-    .transparent(true)
-    .always_on_top(true)
-    .skip_taskbar(true)
-    .maximized(true)
-    .shadow(false)
-    .resizable(false)
-    .visible(true)
-    .focused(false)
-    .build();
-}
-
-fn create_celebration_window(app_handle: &tauri::AppHandle) {
-    if app_handle.get_webview_window("celebration").is_some() {
-        return;
-    }
-    let _ = tauri::WebviewWindowBuilder::new(
-        app_handle,
-        "celebration",
-        tauri::WebviewUrl::App("celebration.html".into()),
-    )
-    .title("")
-    .decorations(false)
-    .transparent(true)
-    .always_on_top(true)
-    .skip_taskbar(true)
-    .maximized(true)
-    .shadow(false)
-    .resizable(false)
-    .visible(false)
-    .build()
-    .map(|win| {
-        let _ = win.set_ignore_cursor_events(true);
-    });
+    WebviewWindowBuilder::new(app, "quick-add", WebviewUrl::App("quick-add.html".into()))
+        .title("Quick Add")
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .visible(false)
+        .inner_size(560.0, 280.0)
+        .center()
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let overlay_ctrl = OverlayController::new();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(move |app, _shortcut, event| {
-                    if event.state != tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                .with_handler(|app, _shortcut, event| {
+                    if event.state != ShortcutState::Pressed {
                         return;
                     }
-                    if app.get_webview_window("quick-add").is_some() {
-                        return;
-                    }
-                    // Defer window creation to next event loop iteration so the
-                    // shortcut handler returns immediately and doesn't block.
-                    let h = app.clone();
+                    let handle = app.clone();
                     let _ = app.run_on_main_thread(move || {
-                        if h.get_webview_window("quick-add").is_some() {
-                            return;
+                        let _ = ensure_quick_add(&handle);
+                        if let Some(win) = handle.get_webview_window("quick-add") {
+                            let _ = win.show();
+                            let _ = win.set_focus();
                         }
-                        let _ = tauri::WebviewWindowBuilder::new(
-                            &h,
-                            "quick-add",
-                            tauri::WebviewUrl::App("quick-add.html".into()),
-                        )
-                        .title("Quick Add")
-                        .decorations(false)
-                        .transparent(true)
-                        .always_on_top(true)
-                        .skip_taskbar(true)
-                        .fullscreen(true)
-                        .visible(true)
-                        .focused(true)
-                        .build();
                     });
                 })
                 .build(),
         )
-        .setup(|app| {
+        .manage(overlay_ctrl.clone())
+        .setup(move |app| {
             let app_dir = app
                 .path()
                 .app_data_dir()
                 .expect("Failed to get app data dir");
-            let database =
-                Database::new(&app_dir).expect("Failed to initialize database");
+            let database = Database::open(&app_dir).expect("Failed to initialize database");
+            let _ = database.seed_demo_if_empty();
             let settings = database.get_settings().unwrap_or_default();
-            let hotkey = settings
-                .get("quick_add_hotkey")
-                .cloned()
-                .unwrap_or_else(|| "Ctrl+Alt+T".into());
-            app.manage(DbState(std::sync::Mutex::new(database)));
+            if let Some(dwell) = settings.get("dwell_ms").and_then(|s| s.parse().ok()) {
+                overlay_ctrl.set_dwell_ms(dwell);
+            }
+
+            let db_arc = Arc::new(Mutex::new(database));
+            app.manage(DbState(db_arc.clone()));
 
             tray::setup_tray(app)?;
 
-            // Register global shortcut with stored hotkey
+            // Hotkey: Windows Ctrl+Alt+T, macOS Cmd+Opt+T
+            #[cfg(target_os = "macos")]
+            let hotkey = settings
+                .get("quick_add_hotkey_mac")
+                .cloned()
+                .unwrap_or_else(|| "Command+Option+T".into());
+            #[cfg(not(target_os = "macos"))]
+            let hotkey = settings
+                .get("quick_add_hotkey_win")
+                .cloned()
+                .unwrap_or_else(|| "Ctrl+Alt+T".into());
+
             let handle = app.handle().clone();
             if handle.global_shortcut().register(hotkey.as_str()).is_err() {
-                eprintln!("Failed to register hotkey '{}', falling back to Ctrl+Alt+T", hotkey);
+                eprintln!("Failed to register hotkey '{hotkey}', trying Ctrl+Alt+T");
                 let _ = handle.global_shortcut().register("Ctrl+Alt+T");
             }
 
-            // Create overlay and celebration windows at startup
             let overlay_handle = app.handle().clone();
-            let cel_handle = app.handle().clone();
+            let quick_handle = app.handle().clone();
+            let hit_handle = app.handle().clone();
+            let ctrl = overlay_ctrl.clone();
+            let remind_handle = app.handle().clone();
+            let remind_db = db_arc.clone();
+
             let _ = app.handle().run_on_main_thread(move || {
-                create_overlay(&overlay_handle);
-                create_celebration_window(&cel_handle);
+                let _ = overlay::create_overlay_window(&overlay_handle);
+                let _ = ensure_quick_add(&quick_handle);
+                overlay::start_hit_test_loop(hit_handle, ctrl);
+                reminders::start_scheduler(remind_handle, remind_db);
             });
 
-            // Handle main window close (prevent close, just hide)
             if let Some(main_window) = app.get_webview_window("main") {
                 let win_handle = app.handle().clone();
                 main_window.on_window_event(move |event| {
-                    match event {
-                        tauri::WindowEvent::CloseRequested { api, .. } => {
-                            api.prevent_close();
-                            if let Some(window) = win_handle.get_webview_window("main") {
-                                let _ = window.hide();
-                            }
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        if let Some(window) = win_handle.get_webview_window("main") {
+                            let _ = window.hide();
                         }
-                        _ => {}
                     }
                 });
             }
@@ -142,28 +123,25 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_tasks,
+            commands::get_today_tasks,
             commands::create_task,
             commands::toggle_task,
             commands::update_task,
             commands::delete_task,
             commands::get_settings,
             commands::update_setting,
-            commands::get_history,
-            commands::get_streak,
-            commands::reset_data,
-            commands::resize_overlay,
+            commands::get_day_stats,
+            commands::get_local_today,
+            commands::get_entitlement,
+            commands::can_feature,
+            commands::unlock_pro_demo,
+            commands::show_quick_add,
+            commands::hide_quick_add,
+            commands::set_overlay_expanded,
+            commands::pin_overlay,
+            commands::show_main_window,
             commands::exit_app,
-            commands::close_overlay_and_show_main,
-            commands::cursor_over_rect,
-            commands::spawn_celebration_window,
         ])
-        .build(tauri::generate_context!())
-        .expect("error while building tauri application")
-        .run(|_app_handle, event| {
-            if let tauri::RunEvent::ExitRequested { .. } = event {
-                // Don't exit on window close
-            }
-        });
+        .run(tauri::generate_context!())
+        .expect("error while running Todly");
 }
-
-

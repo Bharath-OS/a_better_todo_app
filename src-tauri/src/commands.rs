@@ -1,248 +1,223 @@
-use crate::db::{Database, Task, StreakData, DailyHistory};
+use crate::db::{Database, DayStats, Task};
+use crate::entitlements::Plan;
+use crate::overlay::{self, OverlayController};
+use crate::time_util::today_local_day_id;
+use parking_lot::Mutex;
+use serde::Serialize;
 use std::collections::HashMap;
-use tauri::{Emitter, Manager, State};
-use std::sync::Mutex;
-use tauri_plugin_global_shortcut::GlobalShortcutExt;
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter, Manager, State};
 
-pub struct DbState(pub Mutex<Database>);
+pub struct DbState(pub Arc<Mutex<Database>>);
 
 #[tauri::command]
-pub fn get_tasks(db: State<DbState>, period: Option<String>) -> Result<Vec<Task>, String> {
-    db.0.lock()
-        .map_err(|e| e.to_string())?
-        .get_tasks(period.as_deref())
-        .map_err(|e| e.to_string())
+pub fn get_tasks(db: State<DbState>, horizon: Option<String>) -> Result<Vec<Task>, String> {
+    db.0.lock().list_tasks(horizon.as_deref())
+}
+
+#[tauri::command]
+pub fn get_today_tasks(db: State<DbState>) -> Result<Vec<Task>, String> {
+    db.0.lock().tasks_for_local_today()
 }
 
 #[tauri::command]
 pub fn create_task(
-    app_handle: tauri::AppHandle,
+    app: AppHandle,
     db: State<DbState>,
     title: String,
-    period: String,
-    due_time: Option<String>,
+    horizon: String,
+    due_at: Option<String>,
     notes: Option<String>,
+    remind_minutes_before: Option<i64>,
 ) -> Result<Task, String> {
     let id = uuid::Uuid::new_v4().to_string();
-    let task = db.0.lock()
-        .map_err(|e| e.to_string())?
-        .create_task(&id, &title, &period, due_time.as_deref(), notes.as_deref())
-        .map_err(|e| e.to_string())?;
-    let _ = app_handle.emit("tasks-changed", ());
+    let task = db.0.lock().create_task(
+        &id,
+        &title,
+        &horizon,
+        due_at.as_deref(),
+        notes.as_deref(),
+        remind_minutes_before,
+    )?;
+    let _ = app.emit("tasks-changed", ());
     Ok(task)
 }
 
 #[tauri::command]
-pub fn toggle_task(app_handle: tauri::AppHandle, db: State<DbState>, id: String) -> Result<(), String> {
-    db.0.lock()
-        .map_err(|e| e.to_string())?
-        .toggle_task(&id)
-        .map_err(|e| e.to_string())?;
-    let _ = app_handle.emit("tasks-changed", ());
-    Ok(())
+pub fn toggle_task(app: AppHandle, db: State<DbState>, id: String) -> Result<Task, String> {
+    let task = db.0.lock().toggle_task(&id)?;
+    let _ = app.emit("tasks-changed", ());
+    Ok(task)
 }
 
 #[tauri::command]
 pub fn update_task(
-    app_handle: tauri::AppHandle,
+    app: AppHandle,
     db: State<DbState>,
     id: String,
     title: Option<String>,
-    completed: Option<bool>,
-    due_time: Option<String>,
+    horizon: Option<String>,
+    due_at: Option<String>,
+    clear_due: Option<bool>,
     notes: Option<String>,
+    remind_minutes_before: Option<i64>,
+    progress: Option<i64>,
 ) -> Result<(), String> {
-    db.0.lock()
-        .map_err(|e| e.to_string())?
-        .update_task(&id, title.as_deref(), completed, due_time.as_deref(), notes.as_deref())
-        .map_err(|e| e.to_string())?;
-    let _ = app_handle.emit("tasks-changed", ());
+    db.0.lock().update_task(
+        &id,
+        title.as_deref(),
+        horizon.as_deref(),
+        due_at.as_deref(),
+        clear_due.unwrap_or(false),
+        notes.as_deref(),
+        remind_minutes_before,
+        progress,
+    )?;
+    let _ = app.emit("tasks-changed", ());
     Ok(())
 }
 
 #[tauri::command]
-pub fn delete_task(app_handle: tauri::AppHandle, db: State<DbState>, id: String) -> Result<(), String> {
-    db.0.lock()
-        .map_err(|e| e.to_string())?
-        .delete_task(&id)
-        .map_err(|e| e.to_string())?;
-    let _ = app_handle.emit("tasks-changed", ());
+pub fn delete_task(app: AppHandle, db: State<DbState>, id: String) -> Result<(), String> {
+    db.0.lock().delete_task(&id)?;
+    let _ = app.emit("tasks-changed", ());
     Ok(())
 }
 
 #[tauri::command]
 pub fn get_settings(db: State<DbState>) -> Result<HashMap<String, String>, String> {
-    db.0.lock()
-        .map_err(|e| e.to_string())?
-        .get_settings()
-        .map_err(|e| e.to_string())
+    db.0.lock().get_settings()
 }
 
 #[tauri::command]
-pub fn update_setting(app_handle: tauri::AppHandle, db: State<DbState>, key: String, value: String) -> Result<(), String> {
-    db.0.lock()
-        .map_err(|e| e.to_string())?
-        .update_setting(&key, &value)
-        .map_err(|e| e.to_string())?;
-
-    if key == "quick_add_hotkey" {
-        let _ = app_handle.global_shortcut().unregister_all();
-        match app_handle.global_shortcut().register(value.as_str()) {
-            Ok(_) => eprintln!("Hotkey '{}' registered successfully", value),
-            Err(e) => eprintln!("Failed to register hotkey '{}': {:?}", value, e),
+pub fn update_setting(
+    app: AppHandle,
+    db: State<DbState>,
+    key: String,
+    value: String,
+) -> Result<(), String> {
+    db.0.lock().update_setting(&key, &value)?;
+    if key == "dwell_ms" {
+        if let Ok(ms) = value.parse::<u64>() {
+            if let Some(ctrl) = app.try_state::<Arc<OverlayController>>() {
+                ctrl.set_dwell_ms(ms);
+            }
         }
     }
-
-    let _ = app_handle.emit("settings-changed", ());
-    Ok(())
-}
-
-#[tauri::command]
-pub fn get_history(db: State<DbState>) -> Result<Vec<DailyHistory>, String> {
-    db.0.lock()
-        .map_err(|e| e.to_string())?
-        .get_history()
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn get_streak(db: State<DbState>) -> Result<StreakData, String> {
-    db.0.lock()
-        .map_err(|e| e.to_string())?
-        .get_streak()
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn resize_overlay(app_handle: tauri::AppHandle, width: f64, height: f64, x: f64, y: f64) -> Result<String, String> {
-    let win = app_handle.get_webview_window("overlay")
-        .ok_or("overlay window not found".to_string())?;
-    let scale = win.scale_factor().unwrap_or(1.0);
-    let phys_w = (width.max(1.0) * scale) as u32;
-    let phys_h = (height.max(1.0) * scale) as u32;
-    let phys_x = (x.max(0.0) * scale) as i32;
-    let phys_y = (y.max(0.0) * scale) as i32;
-
-    // Tauri window ops are internally dispatched to the main thread
-    let _ = win.set_resizable(true);
-    let _ = win.set_min_size(Some(tauri::Size::Physical(tauri::PhysicalSize::new(phys_w, phys_h))));
-    let _ = win.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(phys_w, phys_h)));
-    let _ = win.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(phys_x, phys_y)));
-
-    Ok("ok".to_string())
-}
-
-#[tauri::command]
-pub fn close_overlay_and_show_main(app_handle: tauri::AppHandle) -> Result<(), String> {
-    if let Some(main) = app_handle.get_webview_window("main") {
-        let _ = main.show();
-        let _ = main.set_focus();
+    if key == "overlay_visible" {
+        if let Some(win) = app.get_webview_window("overlay") {
+            if value == "true" {
+                let _ = win.show();
+            } else {
+                let _ = win.hide();
+            }
+        }
+        if let Some(ctrl) = app.try_state::<Arc<OverlayController>>() {
+            ctrl.set_visible(value == "true");
+        }
     }
-    if let Some(overlay) = app_handle.get_webview_window("overlay") {
-        let _ = overlay.close();
-    }
+    let _ = app.emit("settings-changed", ());
     Ok(())
 }
 
 #[tauri::command]
-pub fn exit_app(app_handle: tauri::AppHandle) -> Result<(), String> {
-    app_handle.exit(0);
+pub fn get_day_stats(db: State<DbState>, days: Option<i64>) -> Result<Vec<DayStats>, String> {
+    db.0.lock().day_stats_last_n(days.unwrap_or(7))
+}
+
+#[tauri::command]
+pub fn get_local_today(db: State<DbState>) -> Result<String, String> {
+    let settings = db.0.lock().get_settings()?;
+    let day_starts = settings
+        .get("day_starts_at")
+        .map(|s| s.as_str())
+        .unwrap_or("00:00");
+    Ok(today_local_day_id(day_starts))
+}
+
+#[derive(Serialize)]
+pub struct EntitlementInfo {
+    pub plan: String,
+    pub active_tasks: i64,
+    pub active_cap: Option<i64>,
+}
+
+#[tauri::command]
+pub fn get_entitlement(db: State<DbState>) -> Result<EntitlementInfo, String> {
+    let db = db.0.lock();
+    let settings = db.get_settings()?;
+    let plan = Plan::from_setting(settings.get("entitlement").map(|s| s.as_str()).unwrap_or("free"));
+    let active = db.active_task_count()?;
+    Ok(EntitlementInfo {
+        plan: plan.as_str().to_string(),
+        active_tasks: active,
+        active_cap: if plan == Plan::Free { Some(20) } else { None },
+    })
+}
+
+#[tauri::command]
+pub fn can_feature(db: State<DbState>, feature: String) -> Result<bool, String> {
+    let settings = db.0.lock().get_settings()?;
+    let plan = Plan::from_setting(settings.get("entitlement").map(|s| s.as_str()).unwrap_or("free"));
+    Ok(plan.can(&feature))
+}
+
+#[tauri::command]
+pub fn unlock_pro_demo(app: AppHandle, db: State<DbState>) -> Result<(), String> {
+    db.0.lock().update_setting("entitlement", "pro")?;
+    let _ = app.emit("settings-changed", ());
     Ok(())
 }
 
 #[tauri::command]
-pub fn reset_data(app_handle: tauri::AppHandle, db: State<DbState>) -> Result<(), String> {
-    db.0.lock()
-        .map_err(|e| e.to_string())?
-        .reset_data()
-        .map_err(|e| e.to_string())?;
-    let _ = app_handle.emit("tasks-changed", ());
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn spawn_celebration_window(app: tauri::AppHandle) -> Result<(), String> {
-    if let Some(win) = app.get_webview_window("celebration") {
+pub fn show_quick_add(app: AppHandle) -> Result<(), String> {
+    crate::ensure_quick_add(&app)?;
+    if let Some(win) = app.get_webview_window("quick-add") {
         let _ = win.show();
-        let _ = win.emit("trigger-celebration", ());
+        let _ = win.set_focus();
     }
     Ok(())
 }
 
-/// Returns whether the cursor is currently within the given rectangle (logical pixels)
-/// relative to the specified window's client area. Used for selective click-through.
 #[tauri::command]
-pub async fn cursor_over_rect(app: tauri::AppHandle, label: String, rx: f64, ry: f64, rw: f64, rh: f64) -> Result<bool, String> {
-    let win = app.get_webview_window(&label).ok_or("window not found")?;
-    let cursor = win.cursor_position().map_err(|e| e.to_string())?;
-    let scale = win.scale_factor().unwrap_or(1.0);
-    let cx = cursor.x as f64 / scale;
-    let cy = cursor.y as f64 / scale;
-    Ok(point_in_rect(cx, cy, rx, ry, rw, rh))
+pub fn hide_quick_add(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("quick-add") {
+        let _ = win.hide();
+    }
+    Ok(())
 }
 
-fn point_in_rect(cx: f64, cy: f64, rx: f64, ry: f64, rw: f64, rh: f64) -> bool {
-    cx >= rx && cx <= rx + rw && cy >= ry && cy <= ry + rh
+#[tauri::command]
+pub fn set_overlay_expanded(
+    app: AppHandle,
+    ctrl: State<'_, Arc<OverlayController>>,
+    expanded: bool,
+) -> Result<(), String> {
+    ctrl.set_expanded(expanded);
+    if let Some(win) = app.get_webview_window("overlay") {
+        // Expanded → interactive; collapsed → click-through until dwell arms again.
+        let _ = win.set_ignore_cursor_events(!expanded);
+    }
+    overlay::resize_overlay(&app, expanded)?;
+    Ok(())
 }
 
-#[cfg(test)]
-mod hit_tests {
-    use super::*;
+#[tauri::command]
+pub fn pin_overlay(app: AppHandle) -> Result<(), String> {
+    overlay::pin_top_center(&app, 340.0, 48.0)
+}
 
-    #[test]
-    fn test_point_inside_rect() {
-        assert!(point_in_rect(150.0, 200.0, 100.0, 100.0, 300.0, 200.0));
+#[tauri::command]
+pub fn show_main_window(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.show();
+        let _ = win.set_focus();
     }
+    Ok(())
+}
 
-    #[test]
-    fn test_point_outside_rect_left() {
-        assert!(!point_in_rect(50.0, 200.0, 100.0, 100.0, 300.0, 200.0));
-    }
-
-    #[test]
-    fn test_point_outside_rect_right() {
-        assert!(!point_in_rect(500.0, 200.0, 100.0, 100.0, 300.0, 200.0));
-    }
-
-    #[test]
-    fn test_point_outside_rect_above() {
-        assert!(!point_in_rect(150.0, 50.0, 100.0, 100.0, 300.0, 200.0));
-    }
-
-    #[test]
-    fn test_point_outside_rect_below() {
-        assert!(!point_in_rect(150.0, 400.0, 100.0, 100.0, 300.0, 200.0));
-    }
-
-    #[test]
-    fn test_point_on_left_edge() {
-        assert!(point_in_rect(100.0, 200.0, 100.0, 100.0, 300.0, 200.0));
-    }
-
-    #[test]
-    fn test_point_on_top_edge() {
-        assert!(point_in_rect(150.0, 100.0, 100.0, 100.0, 300.0, 200.0));
-    }
-
-    #[test]
-    fn test_point_on_right_edge() {
-        assert!(point_in_rect(400.0, 200.0, 100.0, 100.0, 300.0, 200.0));
-    }
-
-    #[test]
-    fn test_point_on_bottom_edge() {
-        assert!(point_in_rect(150.0, 300.0, 100.0, 100.0, 300.0, 200.0));
-    }
-
-    #[test]
-    fn test_negative_coordinates() {
-        assert!(point_in_rect(-50.0, -50.0, -100.0, -100.0, 200.0, 200.0));
-        assert!(!point_in_rect(-150.0, -50.0, -100.0, -100.0, 200.0, 200.0));
-    }
-
-    #[test]
-    fn test_zero_size_rect() {
-        assert!(point_in_rect(100.0, 100.0, 100.0, 100.0, 0.0, 0.0));
-        assert!(!point_in_rect(101.0, 100.0, 100.0, 100.0, 0.0, 0.0));
-    }
+#[tauri::command]
+pub fn exit_app(app: AppHandle) -> Result<(), String> {
+    app.exit(0);
+    Ok(())
 }

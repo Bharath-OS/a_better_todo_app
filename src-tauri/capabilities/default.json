@@ -1,7 +1,7 @@
 {
   "identifier": "default",
-  "description": "Default capabilities",
-  "windows": ["main", "overlay", "quick-add", "celebration"],
+  "description": "Default capabilities for Todly windows",
+  "windows": ["main", "overlay", "quick-add"],
   "permissions": [
     "core:default",
     "core:window:default",
@@ -18,7 +18,9 @@
     "core:window:allow-set-skip-taskbar",
     "core:window:allow-set-resizable",
     "core:window:allow-current-monitor",
+    "core:window:allow-primary-monitor",
     "core:window:allow-outer-position",
+    "core:window:allow-outer-size",
     "core:window:allow-create",
     "core:window:allow-get-all-windows",
     "core:window:allow-is-minimized",
@@ -29,6 +31,7 @@
     "core:event:allow-emit",
     "core:event:allow-listen",
     "shell:allow-open",
-    "global-shortcut:default"
+    "global-shortcut:default",
+    "notification:default"
   ]
 }

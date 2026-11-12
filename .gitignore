@@ -1,5 +1,7 @@
 node_modules/
-target/
-*.pyc
-__pycache__/
-*.db
+dist/
+src-tauri/target/
+.DS_Store
+*.log
+.vscode/
+.idea/

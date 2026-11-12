@@ -1,18 +1,31 @@
 {
   "name": "todly",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
-    "dev": "tauri dev",
-    "build": "tauri build",
-    "serve": "npx serve src -l 1420 --no-clipboard --single"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "check": "svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
-    "canvas-confetti": "^1.9.3"
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-global-shortcut": "^2",
+    "@tauri-apps/plugin-notification": "^2",
+    "canvas-confetti": "^1.9.3",
+    "motion": "^12.0.0"
   },
   "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@tauri-apps/cli": "^2",
-    "serve": "^14"
+    "@tsconfig/svelte": "^5.0.0",
+    "@types/canvas-confetti": "^1.6.4",
+    "svelte": "^5.0.0",
+    "svelte-check": "^4.0.0",
+    "tslib": "^2.8.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0"
   }
 }

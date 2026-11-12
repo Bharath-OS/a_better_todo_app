@@ -1,580 +1,692 @@
-use rusqlite::{params, Connection, Result};
+//! SQLite persistence with versioned migrations.
+//!
+//! Schema uses `horizon` (`daily|weekly|monthly|goal`) and `due_at` (local wall time).
+//! Legacy DBs with `period` / `due_time` are migrated in place.
+
+use crate::time_util::{format_day_id, local_day_id, parse_day_starts_at};
+use chrono::Local;
+use parking_lot::Mutex;
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Mutex;
+
+pub type DbResult<T> = Result<T, String>;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Task {
     pub id: String,
     pub title: String,
-    pub period: String,
-    pub completed: bool,
+    pub horizon: String,
+    pub due_at: Option<String>,
+    pub remind_minutes_before: i64,
     pub completed_at: Option<String>,
     pub created_at: String,
-    pub due_time: Option<String>,
     pub notes: Option<String>,
-    pub recurring: bool,
+    pub progress: Option<i64>,
+    pub second_remind_minutes_before: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct DailyHistory {
+pub struct DayStats {
     pub date: String,
     pub total: i64,
     pub completed: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct StreakData {
-    pub current: i64,
-    pub best: i64,
-}
-
 pub struct Database {
-    pub conn: Mutex<Connection>,
+    conn: Mutex<Connection>,
 }
 
 impl Database {
-    pub fn new(app_dir: &Path) -> Result<Self> {
-        std::fs::create_dir_all(app_dir).ok();
-        let db_path = app_dir.join("todly.db");
-        let conn = Connection::open(db_path)?;
-        let db = Database {
+    pub fn open(app_dir: &Path) -> DbResult<Self> {
+        std::fs::create_dir_all(app_dir).map_err(|e| e.to_string())?;
+        let path = app_dir.join("todly.db");
+        let conn = Connection::open(path).map_err(|e| e.to_string())?;
+        let db = Self {
             conn: Mutex::new(conn),
         };
-        db.initialize()?;
+        db.migrate()?;
         Ok(db)
     }
 
-    fn initialize(&self) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+    pub fn open_in_memory() -> DbResult<Self> {
+        let conn = Connection::open_in_memory().map_err(|e| e.to_string())?;
+        let db = Self {
+            conn: Mutex::new(conn),
+        };
+        db.migrate()?;
+        Ok(db)
+    }
+
+    fn migrate(&self) -> DbResult<()> {
+        let conn = self.conn.lock();
         conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS tasks (
-                id TEXT PRIMARY KEY,
-                title TEXT NOT NULL,
-                period TEXT NOT NULL CHECK(period IN ('daily','weekly','quarterly','yearly')),
-                completed INTEGER NOT NULL DEFAULT 0,
-                completed_at TEXT,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                due_time TEXT,
-                notes TEXT,
-                recurring INTEGER NOT NULL DEFAULT 0
-            );
-            CREATE TABLE IF NOT EXISTS daily_history (
-                date TEXT PRIMARY KEY,
-                total INTEGER NOT NULL DEFAULT 0,
-                completed INTEGER NOT NULL DEFAULT 0
-            );
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
+            "CREATE TABLE IF NOT EXISTS schema_migrations (
+                version INTEGER PRIMARY KEY,
+                applied_at TEXT NOT NULL
             );",
-        )?;
+        )
+        .map_err(|e| e.to_string())?;
+
+        let version: i64 = conn
+            .query_row(
+                "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+
+        // Detect legacy schema (no migrations, but old tasks table exists).
+        let has_tasks = table_exists(&conn, "tasks")?;
+        let has_horizon = has_tasks && column_exists(&conn, "tasks", "horizon")?;
+        let has_period = has_tasks && column_exists(&conn, "tasks", "period")?;
+
+        if version < 1 {
+            if has_period && !has_horizon {
+                migrate_legacy_v1(&conn)?;
+            } else if !has_tasks {
+                conn.execute_batch(SCHEMA_V1).map_err(|e| e.to_string())?;
+            } else if has_horizon {
+                // Already on v1-shaped schema without migration row
+            } else {
+                conn.execute_batch(SCHEMA_V1).map_err(|e| e.to_string())?;
+            }
+            mark_migration(&conn, 1)?;
+        }
+
+        seed_default_settings(&conn)?;
         Ok(())
     }
 
-    pub fn get_tasks(&self, period: Option<&str>) -> Result<Vec<Task>> {
-        let conn = self.conn.lock().unwrap();
-        let query = match period {
-            Some(_) => "SELECT * FROM tasks WHERE period = ?1 ORDER BY completed ASC, created_at DESC",
-            None => "SELECT * FROM tasks ORDER BY period, completed ASC, created_at DESC",
-        };
-        let mut stmt = conn.prepare(query)?;
-
-        let tasks = if let Some(p) = period {
-            stmt.query_map(params![p], Self::map_task)?
+    pub fn list_tasks(&self, horizon: Option<&str>) -> DbResult<Vec<Task>> {
+        let conn = self.conn.lock();
+        let mut out = Vec::new();
+        if let Some(h) = horizon {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, title, horizon, due_at, remind_minutes_before, completed_at,
+                            created_at, notes, progress, second_remind_minutes_before
+                     FROM tasks WHERE horizon = ?1
+                     ORDER BY completed_at IS NOT NULL, due_at IS NULL, due_at ASC, created_at DESC",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(params![h], map_task)
+                .map_err(|e| e.to_string())?;
+            for row in rows {
+                out.push(row.map_err(|e| e.to_string())?);
+            }
         } else {
-            stmt.query_map([], Self::map_task)?
-        };
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, title, horizon, due_at, remind_minutes_before, completed_at,
+                            created_at, notes, progress, second_remind_minutes_before
+                     FROM tasks
+                     ORDER BY horizon, completed_at IS NOT NULL, due_at IS NULL, due_at ASC, created_at DESC",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = stmt.query_map([], map_task).map_err(|e| e.to_string())?;
+            for row in rows {
+                out.push(row.map_err(|e| e.to_string())?);
+            }
+        }
+        Ok(out)
+    }
 
-        tasks.collect::<Result<Vec<_>>>()
+    pub fn tasks_for_local_today(&self) -> DbResult<Vec<Task>> {
+        let settings = self.get_settings()?;
+        let day_starts = settings
+            .get("day_starts_at")
+            .map(|s| s.as_str())
+            .unwrap_or("00:00");
+        let mins = parse_day_starts_at(day_starts);
+        let today = format_day_id(local_day_id(Local::now(), mins));
+        let all = self.list_tasks(Some("daily"))?;
+        // Include weekly/monthly items due today as well for the Today view.
+        let mut extra = self.list_tasks(None)?;
+        extra.retain(|t| {
+            t.horizon != "daily"
+                && t.completed_at.is_none()
+                && t.due_at
+                    .as_ref()
+                    .map(|d| d.starts_with(&today))
+                    .unwrap_or(false)
+        });
+        let mut daily = all;
+        daily.extend(extra);
+        Ok(daily)
     }
 
     pub fn create_task(
         &self,
         id: &str,
         title: &str,
-        period: &str,
-        due_time: Option<&str>,
+        horizon: &str,
+        due_at: Option<&str>,
         notes: Option<&str>,
-    ) -> Result<Task> {
-        let conn = self.conn.lock().unwrap();
-        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+        remind_minutes_before: Option<i64>,
+    ) -> DbResult<Task> {
+        validate_horizon(horizon)?;
+        let entitlement = self
+            .get_settings()?
+            .get("entitlement")
+            .cloned()
+            .unwrap_or_else(|| "free".into());
+        if entitlement != "pro" {
+            if horizon == "monthly" || horizon == "goal" {
+                return Err("Monthly and Long-term goals require Pro (demo unlock in Upgrade)."
+                    .into());
+            }
+            let active = self.active_task_count()?;
+            if active >= 20 {
+                return Err("Free plan allows up to 20 active tasks. Unlock Pro (demo) to continue."
+                    .into());
+            }
+        }
+
+        let now = local_now_iso();
+        let remind = remind_minutes_before.unwrap_or(10);
+        let conn = self.conn.lock();
         conn.execute(
-            "INSERT INTO tasks (id, title, period, completed, created_at, due_time, notes, recurring)
-             VALUES (?1, ?2, ?3, 0, ?4, ?5, ?6, 0)",
-            params![id, title, period, now, due_time, notes],
-        )?;
+            "INSERT INTO tasks (id, title, horizon, due_at, remind_minutes_before, completed_at, created_at, notes)
+             VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7)",
+            params![id, title, horizon, due_at, remind, now, notes],
+        )
+        .map_err(|e| e.to_string())?;
         Ok(Task {
             id: id.to_string(),
             title: title.to_string(),
-            period: period.to_string(),
-            completed: false,
+            horizon: horizon.to_string(),
+            due_at: due_at.map(|s| s.to_string()),
+            remind_minutes_before: remind,
             completed_at: None,
             created_at: now,
-            due_time: due_time.map(|s| s.to_string()),
             notes: notes.map(|s| s.to_string()),
-            recurring: false,
+            progress: None,
+            second_remind_minutes_before: None,
         })
     }
 
-    pub fn toggle_task(&self, id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
-        let (completed, _completed_at): (bool, Option<String>) = conn
+    pub fn toggle_task(&self, id: &str) -> DbResult<Task> {
+        let conn = self.conn.lock();
+        let mut task = conn
             .query_row(
-                "SELECT completed, completed_at FROM tasks WHERE id = ?1",
+                "SELECT id, title, horizon, due_at, remind_minutes_before, completed_at,
+                        created_at, notes, progress, second_remind_minutes_before
+                 FROM tasks WHERE id = ?1",
                 params![id],
-                |row| {
-                    let comp: i64 = row.get(0)?;
-                    Ok((comp != 0, row.get(1)?))
-                },
+                map_task,
             )
-            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-
-        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
-        let new_completed = !completed;
-        let new_completed_at = if new_completed { Some(&now) } else { None };
-
-        conn.execute(
-            "UPDATE tasks SET completed = ?1, completed_at = ?2 WHERE id = ?3",
-            params![new_completed as i64, new_completed_at, id],
-        )?;
-
-        drop(conn);
-        self.update_daily_history()?;
-        Ok(())
+            .map_err(|e| e.to_string())?;
+        if task.completed_at.is_some() {
+            conn.execute(
+                "UPDATE tasks SET completed_at = NULL WHERE id = ?1",
+                params![id],
+            )
+            .map_err(|e| e.to_string())?;
+            task.completed_at = None;
+        } else {
+            let now = local_now_iso();
+            conn.execute(
+                "UPDATE tasks SET completed_at = ?1 WHERE id = ?2",
+                params![now, id],
+            )
+            .map_err(|e| e.to_string())?;
+            task.completed_at = Some(now);
+        }
+        Ok(task)
     }
 
     pub fn update_task(
         &self,
         id: &str,
         title: Option<&str>,
-        completed: Option<bool>,
-        due_time: Option<&str>,
+        horizon: Option<&str>,
+        due_at: Option<&str>,
+        clear_due: bool,
         notes: Option<&str>,
-    ) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        remind_minutes_before: Option<i64>,
+        progress: Option<i64>,
+    ) -> DbResult<()> {
+        if let Some(h) = horizon {
+            validate_horizon(h)?;
+        }
+        let conn = self.conn.lock();
         if let Some(t) = title {
-            conn.execute("UPDATE tasks SET title = ?1 WHERE id = ?2", params![t, id])?;
+            conn.execute("UPDATE tasks SET title = ?1 WHERE id = ?2", params![t, id])
+                .map_err(|e| e.to_string())?;
         }
-        if let Some(c) = completed {
-            let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+        if let Some(h) = horizon {
             conn.execute(
-                "UPDATE tasks SET completed = ?1, completed_at = ?2 WHERE id = ?3",
-                params![c as i64, if c { Some(&now) } else { None }, id],
-            )?;
+                "UPDATE tasks SET horizon = ?1 WHERE id = ?2",
+                params![h, id],
+            )
+            .map_err(|e| e.to_string())?;
         }
-        if let Some(t) = due_time {
+        if clear_due {
+            conn.execute("UPDATE tasks SET due_at = NULL WHERE id = ?1", params![id])
+                .map_err(|e| e.to_string())?;
+        } else if let Some(due) = due_at {
             conn.execute(
-                "UPDATE tasks SET due_time = ?1 WHERE id = ?2",
-                params![t, id],
-            )?;
+                "UPDATE tasks SET due_at = ?1 WHERE id = ?2",
+                params![due, id],
+            )
+            .map_err(|e| e.to_string())?;
         }
         if let Some(n) = notes {
+            conn.execute("UPDATE tasks SET notes = ?1 WHERE id = ?2", params![n, id])
+                .map_err(|e| e.to_string())?;
+        }
+        if let Some(r) = remind_minutes_before {
             conn.execute(
-                "UPDATE tasks SET notes = ?1 WHERE id = ?2",
-                params![n, id],
-            )?;
+                "UPDATE tasks SET remind_minutes_before = ?1 WHERE id = ?2",
+                params![r, id],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        if let Some(p) = progress {
+            conn.execute(
+                "UPDATE tasks SET progress = ?1 WHERE id = ?2",
+                params![p, id],
+            )
+            .map_err(|e| e.to_string())?;
         }
         Ok(())
     }
 
-    pub fn delete_task(&self, id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM tasks WHERE id = ?1", params![id])?;
-        drop(conn);
-        self.update_daily_history()?;
+    pub fn delete_task(&self, id: &str) -> DbResult<()> {
+        let conn = self.conn.lock();
+        conn.execute("DELETE FROM tasks WHERE id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
         Ok(())
     }
 
-    pub fn get_settings(&self) -> Result<std::collections::HashMap<String, String>> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT key, value FROM settings")?;
-        let rows = stmt.query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })?;
-        let mut map = std::collections::HashMap::new();
+    pub fn active_task_count(&self) -> DbResult<i64> {
+        let conn = self.conn.lock();
+        conn.query_row(
+            "SELECT COUNT(*) FROM tasks WHERE completed_at IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())
+    }
+
+    pub fn get_settings(&self) -> DbResult<HashMap<String, String>> {
+        let conn = self.conn.lock();
+        let mut stmt = conn
+            .prepare("SELECT key, value FROM settings")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?;
+        let mut map = HashMap::new();
         for row in rows {
-            let (k, v) = row?;
+            let (k, v) = row.map_err(|e| e.to_string())?;
             map.insert(k, v);
-        }
-
-        if !map.contains_key("overlay_corner") {
-            map.insert("overlay_corner".into(), "tr".into());
-        }
-        if !map.contains_key("collapsed_opacity") {
-            map.insert("collapsed_opacity".into(), "0.60".into());
-        }
-        if !map.contains_key("hover_delay_ms") {
-            map.insert("hover_delay_ms".into(), "1200".into());
-        }
-        if !map.contains_key("show_streak") {
-            map.insert("show_streak".into(), "true".into());
-        }
-        if !map.contains_key("keep_on_top") {
-            map.insert("keep_on_top".into(), "true".into());
-        }
-        if !map.contains_key("quick_add_hotkey") {
-            map.insert("quick_add_hotkey".into(), "Ctrl+Alt+T".into());
         }
         Ok(map)
     }
 
-    pub fn update_setting(&self, key: &str, value: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+    pub fn update_setting(&self, key: &str, value: &str) -> DbResult<()> {
+        let conn = self.conn.lock();
         conn.execute(
             "INSERT INTO settings (key, value) VALUES (?1, ?2)
-             ON CONFLICT(key) DO UPDATE SET value = ?2",
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             params![key, value],
-        )?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
-    pub fn get_history(&self) -> Result<Vec<DailyHistory>> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT date, total, completed FROM daily_history ORDER BY date DESC LIMIT 365",
-        )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(DailyHistory {
-                date: row.get(0)?,
-                total: row.get(1)?,
-                completed: row.get(2)?,
-            })
-        })?;
-        rows.collect::<Result<Vec<_>>>()
+    pub fn day_stats_last_n(&self, n: i64) -> DbResult<Vec<DayStats>> {
+        let settings = self.get_settings()?;
+        let day_starts = settings
+            .get("day_starts_at")
+            .map(|s| s.as_str())
+            .unwrap_or("00:00");
+        let mins = parse_day_starts_at(day_starts);
+        let today = local_day_id(Local::now(), mins);
+        let mut out = Vec::new();
+        let conn = self.conn.lock();
+        for i in (0..n).rev() {
+            let day = today - chrono::Duration::days(i);
+            let date = format_day_id(day);
+            // Count daily tasks completed on that local date (by completed_at prefix).
+            let completed: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM tasks
+                     WHERE horizon = 'daily' AND completed_at IS NOT NULL AND substr(completed_at, 1, 10) = ?1",
+                    params![date],
+                    |r| r.get(0),
+                )
+                .unwrap_or(0);
+            let total: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM tasks WHERE horizon = 'daily'
+                     AND (substr(created_at, 1, 10) <= ?1)
+                     AND (completed_at IS NULL OR substr(completed_at, 1, 10) >= ?1 OR substr(created_at, 1, 10) = ?1)",
+                    params![date],
+                    |r| r.get(0),
+                )
+                .unwrap_or(completed);
+            out.push(DayStats {
+                date,
+                total: total.max(completed),
+                completed,
+            });
+        }
+        Ok(out)
     }
 
-    pub fn get_streak(&self) -> Result<StreakData> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT date, total, completed FROM daily_history WHERE date >= ?1 ORDER BY date DESC"
-        )?;
-        let cutoff = (chrono::Utc::now() - chrono::Duration::days(365))
-            .format("%Y-%m-%d")
-            .to_string();
-        let rows = stmt.query_map(params![cutoff], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?))
-        })?;
-
-        let mut history = std::collections::HashMap::new();
-        for row in rows {
-            let (date, total, completed) = row?;
-            history.insert(date, (total, completed));
+    pub fn seed_demo_if_empty(&self) -> DbResult<()> {
+        let conn = self.conn.lock();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM tasks", [], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        if count > 0 {
+            return Ok(());
         }
+        drop(conn);
+        let samples = [
+            ("Review morning emails", "daily"),
+            ("Deep work block: 2 hours", "daily"),
+            ("Send invoice to Acme Studio", "daily"),
+            ("Ship landing page v2", "weekly"),
+            ("Prepare team presentation", "weekly"),
+        ];
+        for (title, horizon) in samples {
+            let id = uuid::Uuid::new_v4().to_string();
+            let _ = self.create_task(&id, title, horizon, None, None, Some(10))?;
+        }
+        Ok(())
+    }
 
-        let mut current: i64 = 0;
-        let mut best: i64 = 0;
-        let mut run: i64 = 0;
-
-        for i in 0..365 {
-            let date = (chrono::Utc::now() - chrono::Duration::days(i))
-                .format("%Y-%m-%d")
-                .to_string();
-            match history.get(&date) {
-                Some((total, completed)) if *total > 0 && *completed >= *total => {
-                    run += 1;
-                    if run > best { best = run; }
-                }
-                _ => {
-                    if i == 0 { continue; }
-                    // Only the current streak (from today backward) goes into `current`
-                    if current == 0 { current = run; }
-                    run = 0;
+    pub fn upcoming_reminders(&self, within_minutes: i64) -> DbResult<Vec<Task>> {
+        let now = Local::now();
+        let tasks = self.list_tasks(None)?;
+        let mut out = Vec::new();
+        for t in tasks {
+            if t.completed_at.is_some() {
+                continue;
+            }
+            let Some(due) = t.due_at.as_ref() else {
+                continue;
+            };
+            if let Ok(due_dt) = chrono::NaiveDateTime::parse_from_str(due, "%Y-%m-%dT%H:%M:%S") {
+                if let Some(due_local) = due_dt.and_local_timezone(Local).single() {
+                    let lead = chrono::Duration::minutes(t.remind_minutes_before);
+                    let fire_at = due_local - lead;
+                    let delta = (fire_at - now).num_minutes();
+                    if delta <= 0 && (due_local - now).num_minutes() <= within_minutes {
+                        out.push(t);
+                    }
                 }
             }
         }
-        // If the streak is still ongoing through day 365
-        if current == 0 { current = run; }
-
-        Ok(StreakData { current, best })
+        Ok(out)
     }
+}
 
-    pub fn reset_data(&self) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute_batch(
-            "DELETE FROM tasks; DELETE FROM daily_history;",
-        )?;
-        drop(conn);
-        self.seed_data()?;
-        Ok(())
-    }
+const SCHEMA_V1: &str = r#"
+CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    horizon TEXT NOT NULL CHECK (horizon IN ('daily','weekly','monthly','goal')),
+    due_at TEXT,
+    remind_minutes_before INTEGER NOT NULL DEFAULT 10,
+    completed_at TEXT,
+    created_at TEXT NOT NULL,
+    notes TEXT,
+    progress INTEGER,
+    second_remind_minutes_before INTEGER
+);
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+"#;
 
-    pub fn seed_data(&self) -> Result<()> {
-        let tasks = vec![
-            ("Review morning emails", "daily"),
-            ("Deep work block: 2 hours", "daily"),
-            ("Exercise 30 min", "daily"),
-            ("Ship v2 of landing page", "weekly"),
-            ("Prepare team presentation", "weekly"),
-            ("Code review backlog", "weekly"),
-            ("Hire 2 engineers", "quarterly"),
-            ("Review Q2 OKRs", "quarterly"),
-            ("Read 24 books", "yearly"),
-            ("Visit 3 new countries", "yearly"),
-        ];
+fn mark_migration(conn: &Connection, version: i64) -> DbResult<()> {
+    conn.execute(
+        "INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
+        params![version, local_now_iso()],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
 
-        let now = chrono::Utc::now();
-        for (i, (title, period)) in tasks.iter().enumerate() {
-            let id = uuid::Uuid::new_v4().to_string();
-            let created = (now - chrono::Duration::hours(i as i64 * 2))
-                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-                .to_string();
-            let conn = self.conn.lock().unwrap();
-            conn.execute(
-                "INSERT OR IGNORE INTO tasks (id, title, period, created_at) VALUES (?1, ?2, ?3, ?4)",
-                params![id, title, period, created],
-            )?;
-        }
-        Ok(())
-    }
+fn migrate_legacy_v1(conn: &Connection) -> DbResult<()> {
+    conn.execute_batch(
+        r#"
+        CREATE TABLE tasks_new (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            horizon TEXT NOT NULL CHECK (horizon IN ('daily','weekly','monthly','goal')),
+            due_at TEXT,
+            remind_minutes_before INTEGER NOT NULL DEFAULT 10,
+            completed_at TEXT,
+            created_at TEXT NOT NULL,
+            notes TEXT,
+            progress INTEGER,
+            second_remind_minutes_before INTEGER
+        );
+        INSERT INTO tasks_new (id, title, horizon, due_at, remind_minutes_before, completed_at, created_at, notes)
+        SELECT
+            id,
+            title,
+            CASE period
+                WHEN 'quarterly' THEN 'goal'
+                WHEN 'yearly' THEN 'goal'
+                ELSE period
+            END,
+            due_time,
+            10,
+            CASE WHEN completed != 0 THEN COALESCE(completed_at, created_at) ELSE NULL END,
+            created_at,
+            notes
+        FROM tasks;
+        DROP TABLE tasks;
+        ALTER TABLE tasks_new RENAME TO tasks;
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+        "#,
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
 
-    fn update_daily_history(&self) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
-        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
-
-        let (total, completed): (i64, i64) = conn
-            .query_row(
-                "SELECT COUNT(*), COALESCE(SUM(CASE WHEN completed THEN 1 ELSE 0 END), 0)
-                 FROM tasks WHERE period = 'daily'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )?;
-
+fn seed_default_settings(conn: &Connection) -> DbResult<()> {
+    let defaults = [
+        ("theme", "system"),
+        ("day_starts_at", "00:00"),
+        ("week_starts_on", "monday"),
+        ("dwell_ms", "2000"),
+        ("overlay_position", "top-center"),
+        ("overlay_style", "next-task"),
+        ("overlay_visible", "true"),
+        ("remind_minutes_before", "10"),
+        ("entitlement", "free"),
+        ("quick_add_hotkey_win", "Ctrl+Alt+T"),
+        ("quick_add_hotkey_mac", "Command+Option+T"),
+        ("onboarding_done", "false"),
+        ("fullscreen_behaviour", "hide"),
+    ];
+    for (k, v) in defaults {
         conn.execute(
-            "INSERT INTO daily_history (date, total, completed) VALUES (?1, ?2, ?3)
-             ON CONFLICT(date) DO UPDATE SET total = ?2, completed = ?3",
-            params![today, total, completed],
-        )?;
-        Ok(())
+            "INSERT OR IGNORE INTO settings (key, value) VALUES (?1, ?2)",
+            params![k, v],
+        )
+        .map_err(|e| e.to_string())?;
     }
+    Ok(())
+}
 
-    fn map_task(row: &rusqlite::Row) -> rusqlite::Result<Task> {
-        Ok(Task {
-            id: row.get(0)?,
-            title: row.get(1)?,
-            period: row.get(2)?,
-            completed: {
-                let v: i64 = row.get(3)?;
-                v != 0
-            },
-            completed_at: row.get(4)?,
-            created_at: row.get(5)?,
-            due_time: row.get(6)?,
-            notes: row.get(7)?,
-            recurring: {
-                let v: i64 = row.get(8)?;
-                v != 0
-            },
-        })
+fn validate_horizon(h: &str) -> DbResult<()> {
+    match h {
+        "daily" | "weekly" | "monthly" | "goal" => Ok(()),
+        _ => Err(format!("invalid horizon '{h}'")),
     }
+}
+
+fn local_now_iso() -> String {
+    Local::now().format("%Y-%m-%dT%H:%M:%S").to_string()
+}
+
+fn map_task(row: &rusqlite::Row<'_>) -> rusqlite::Result<Task> {
+    Ok(Task {
+        id: row.get(0)?,
+        title: row.get(1)?,
+        horizon: row.get(2)?,
+        due_at: row.get(3)?,
+        remind_minutes_before: row.get(4)?,
+        completed_at: row.get(5)?,
+        created_at: row.get(6)?,
+        notes: row.get(7)?,
+        progress: row.get(8)?,
+        second_remind_minutes_before: row.get(9)?,
+    })
+}
+
+fn table_exists(conn: &Connection, name: &str) -> DbResult<bool> {
+    let n: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+            params![name],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(n > 0)
+}
+
+fn column_exists(conn: &Connection, table: &str, column: &str) -> DbResult<bool> {
+    let mut stmt = conn
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| e.to_string())?;
+    for row in rows {
+        if row.map_err(|e| e.to_string())? == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
 
-    fn test_db() -> Database {
+    #[test]
+    fn create_list_toggle_delete() {
+        let db = Database::open_in_memory().unwrap();
+        let t = db
+            .create_task("a1", "Hello", "daily", None, None, Some(10))
+            .unwrap();
+        assert_eq!(t.title, "Hello");
+        assert!(t.completed_at.is_none());
+        assert_eq!(db.list_tasks(None).unwrap().len(), 1);
+        let toggled = db.toggle_task("a1").unwrap();
+        assert!(toggled.completed_at.is_some());
+        db.delete_task("a1").unwrap();
+        assert!(db.list_tasks(None).unwrap().is_empty());
+    }
+
+    #[test]
+    fn monthly_horizon_allowed_in_schema() {
+        let db = Database::open_in_memory().unwrap();
+        db.update_setting("entitlement", "pro").unwrap();
+        let t = db
+            .create_task("m1", "Month goal", "monthly", None, None, None)
+            .unwrap();
+        assert_eq!(t.horizon, "monthly");
+    }
+
+    #[test]
+    fn free_blocks_monthly_and_caps_active() {
+        let db = Database::open_in_memory().unwrap();
+        let err = db
+            .create_task("m1", "Month", "monthly", None, None, None)
+            .unwrap_err();
+        assert!(err.to_lowercase().contains("pro"));
+        for i in 0..20 {
+            db.create_task(&format!("t{i}"), "x", "daily", None, None, None)
+                .unwrap();
+        }
+        let err = db
+            .create_task("t21", "overflow", "daily", None, None, None)
+            .unwrap_err();
+        assert!(err.contains("20"));
+    }
+
+    #[test]
+    fn due_at_round_trips() {
+        let db = Database::open_in_memory().unwrap();
+        db.create_task(
+            "d1",
+            "Due",
+            "daily",
+            Some("2026-11-12T17:00:00"),
+            None,
+            Some(10),
+        )
+        .unwrap();
+        let tasks = db.list_tasks(None).unwrap();
+        assert_eq!(tasks[0].due_at.as_deref(), Some("2026-11-12T17:00:00"));
+        // Ensure we never expose a legacy `deadline` field name via serde keys
+        let json = serde_json::to_value(&tasks[0]).unwrap();
+        assert!(json.get("due_at").is_some());
+        assert!(json.get("deadline").is_none());
+    }
+
+    #[test]
+    fn settings_defaults_include_top_center() {
+        let db = Database::open_in_memory().unwrap();
+        let s = db.get_settings().unwrap();
+        assert_eq!(s.get("overlay_position").map(|x| x.as_str()), Some("top-center"));
+        assert_eq!(s.get("dwell_ms").map(|x| x.as_str()), Some("2000"));
+    }
+
+    #[test]
+    fn migration_from_legacy_period_table() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS tasks (
+            "CREATE TABLE tasks (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
                 period TEXT NOT NULL CHECK(period IN ('daily','weekly','quarterly','yearly')),
                 completed INTEGER NOT NULL DEFAULT 0,
                 completed_at TEXT,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                created_at TEXT NOT NULL,
                 due_time TEXT,
                 notes TEXT,
                 recurring INTEGER NOT NULL DEFAULT 0
             );
-            CREATE TABLE IF NOT EXISTS daily_history (
-                date TEXT PRIMARY KEY,
-                total INTEGER NOT NULL DEFAULT 0,
-                completed INTEGER NOT NULL DEFAULT 0
-            );
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            );",
+            INSERT INTO tasks (id, title, period, completed, created_at, due_time)
+            VALUES ('1', 'Old', 'quarterly', 0, '2026-01-01T00:00:00', '2026-03-01T12:00:00');
+            CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);",
         )
         .unwrap();
-        Database {
-            conn: Mutex::new(conn),
-        }
-    }
-
-    fn insert_history(db: &Database, date: &str, total: i64, completed: i64) {
-        let conn = db.conn.lock().unwrap();
-        conn.execute(
-            "INSERT INTO daily_history (date, total, completed) VALUES (?1, ?2, ?3)",
-            rusqlite::params![date, total, completed],
-        ).unwrap();
-    }
-
-    #[test]
-    fn test_create_and_get_tasks() {
-        let db = test_db();
-        let task = db
-            .create_task("test-1", "Test task", "daily", None, None)
+        // Use Database by wrapping — re-run migrate path via open_in_memory won't have legacy.
+        // Call migrate_legacy directly then construct.
+        migrate_legacy_v1(&conn).unwrap();
+        let horizon: String = conn
+            .query_row("SELECT horizon FROM tasks WHERE id='1'", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(task.title, "Test task");
-        assert_eq!(task.period, "daily");
-        assert!(!task.completed);
-
-        let tasks = db.get_tasks(None).unwrap();
-        assert_eq!(tasks.len(), 1);
-        assert_eq!(tasks[0].title, "Test task");
-    }
-
-    #[test]
-    fn test_get_tasks_filtered_by_period() {
-        let db = test_db();
-        db.create_task("t1", "Daily task", "daily", None, None).unwrap();
-        db.create_task("t2", "Weekly task", "weekly", None, None).unwrap();
-
-        let daily = db.get_tasks(Some("daily")).unwrap();
-        assert_eq!(daily.len(), 1);
-        assert_eq!(daily[0].title, "Daily task");
-
-        let weekly = db.get_tasks(Some("weekly")).unwrap();
-        assert_eq!(weekly.len(), 1);
-        assert_eq!(weekly[0].title, "Weekly task");
-    }
-
-    #[test]
-    fn test_toggle_task() {
-        let db = test_db();
-        db.create_task("t1", "Togglable", "daily", None, None).unwrap();
-
-        db.toggle_task("t1").unwrap();
-        let tasks = db.get_tasks(Some("daily")).unwrap();
-        assert!(tasks[0].completed);
-
-        db.toggle_task("t1").unwrap();
-        let tasks = db.get_tasks(Some("daily")).unwrap();
-        assert!(!tasks[0].completed);
-    }
-
-    #[test]
-    fn test_update_task() {
-        let db = test_db();
-        db.create_task("t1", "Original", "daily", None, None).unwrap();
-
-        db.update_task("t1", Some("Updated"), None, None, None).unwrap();
-        let tasks = db.get_tasks(None).unwrap();
-        assert_eq!(tasks[0].title, "Updated");
-
-        db.update_task("t1", None, Some(true), None, None).unwrap();
-        let tasks = db.get_tasks(None).unwrap();
-        assert!(tasks[0].completed);
-    }
-
-    #[test]
-    fn test_delete_task() {
-        let db = test_db();
-        db.create_task("t1", "Delete me", "daily", None, None).unwrap();
-        assert_eq!(db.get_tasks(None).unwrap().len(), 1);
-
-        db.delete_task("t1").unwrap();
-        assert_eq!(db.get_tasks(None).unwrap().len(), 0);
-    }
-
-    #[test]
-    fn test_settings_crud() {
-        let db = test_db();
-        let settings = db.get_settings().unwrap();
-        assert_eq!(settings.get("overlay_corner").unwrap(), "tr");
-
-        db.update_setting("overlay_corner", "bl").unwrap();
-        let settings = db.get_settings().unwrap();
-        assert_eq!(settings.get("overlay_corner").unwrap(), "bl");
-    }
-
-    #[test]
-    fn test_streak_empty() {
-        let db = test_db();
-        let streak = db.get_streak().unwrap();
-        assert_eq!(streak.current, 0);
-        assert_eq!(streak.best, 0);
-    }
-
-    #[test]
-    fn test_streak_single_day_completed() {
-        let db = test_db();
-        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
-        insert_history(&db, &today, 3, 3);
-        let streak = db.get_streak().unwrap();
-        assert_eq!(streak.current, 1);
-        assert_eq!(streak.best, 1);
-    }
-
-    #[test]
-    fn test_streak_single_day_incomplete() {
-        let db = test_db();
-        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
-        insert_history(&db, &today, 2, 1);
-        let streak = db.get_streak().unwrap();
-        assert_eq!(streak.current, 0);
-        assert_eq!(streak.best, 0);
-    }
-
-    #[test]
-    fn test_streak_three_days() {
-        let db = test_db();
-
-        for i in (0..3).rev() {
-            let date = (chrono::Utc::now() - chrono::Duration::days(i))
-                .format("%Y-%m-%d").to_string();
-            insert_history(&db, &date, 1, 1);
-        }
-        let streak = db.get_streak().unwrap();
-        assert_eq!(streak.current, 3);
-        assert_eq!(streak.best, 3);
-    }
-
-    #[test]
-    fn test_streak_broken_yesterday() {
-        let db = test_db();
-        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
-        let yesterday = (chrono::Utc::now() - chrono::Duration::days(1))
-            .format("%Y-%m-%d").to_string();
-        insert_history(&db, &today, 2, 2);
-        insert_history(&db, &yesterday, 1, 0);
-
-        let streak = db.get_streak().unwrap();
-        assert_eq!(streak.current, 1);
-        assert_eq!(streak.best, 1);
-    }
-
-    #[test]
-    fn test_streak_best_greater_than_current() {
-        let db = test_db();
-
-        // 3-day streak ending 5 days ago (best = 3)
-        for i in 5..8 {
-            let date = (chrono::Utc::now() - chrono::Duration::days(i))
-                .format("%Y-%m-%d").to_string();
-            insert_history(&db, &date, 1, 1);
-        }
-        // Today also completed (current = 1, but best should be 3)
-        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
-        insert_history(&db, &today, 1, 1);
-
-        let streak = db.get_streak().unwrap();
-        assert_eq!(streak.current, 1);
-        assert_eq!(streak.best, 3);
-    }
-
-    #[test]
-    fn test_reset_data() {
-        let db = test_db();
-        db.create_task("t1", "Task", "daily", None, None).unwrap();
-        assert_eq!(db.get_tasks(None).unwrap().len(), 1);
-
-        db.reset_data().unwrap();
-        let tasks = db.get_tasks(None).unwrap();
-        assert!(tasks.len() >= 3);
-        assert!(tasks.iter().any(|t| t.title.contains("emails")));
+        assert_eq!(horizon, "goal");
+        let due: String = conn
+            .query_row("SELECT due_at FROM tasks WHERE id='1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(due, "2026-03-01T12:00:00");
+        // monthly must be insertable after migration
+        conn.execute(
+            "INSERT INTO tasks (id, title, horizon, remind_minutes_before, created_at)
+             VALUES ('2', 'M', 'monthly', 10, '2026-01-01T00:00:00')",
+            [],
+        )
+        .unwrap();
     }
 }
