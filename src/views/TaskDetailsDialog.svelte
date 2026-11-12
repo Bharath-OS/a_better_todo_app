@@ -41,14 +41,16 @@
       dueDate && dueTime ? `${dueDate}T${dueTime}:00` : dueDate ? `${dueDate}T17:00:00` : null;
     try {
       await invoke("update_task", {
-        id: task.id,
-        title: title.trim() || task.title,
-        horizon,
-        due_at,
-        clear_due: due_at === null,
-        notes: notes || null,
-        remind_minutes_before: remind,
-        progress: null,
+        args: {
+          id: task.id,
+          title: title.trim() || task.title,
+          horizon,
+          due_at,
+          clear_due: due_at === null,
+          notes: notes || null,
+          remind_minutes_before: remind,
+          progress: null,
+        },
       });
     } catch {
       /* preview mode */

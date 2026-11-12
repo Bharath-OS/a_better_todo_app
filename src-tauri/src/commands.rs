@@ -1,4 +1,4 @@
-use crate::db::{Database, DayStats, Task};
+use crate::db::{Database, DayStats, Task, TaskPatch};
 use crate::entitlements::Plan;
 use crate::overlay::{self, OverlayController};
 use crate::time_util::today_local_day_id;
@@ -50,29 +50,30 @@ pub fn toggle_task(app: AppHandle, db: State<DbState>, id: String) -> Result<Tas
     Ok(task)
 }
 
+#[derive(serde::Deserialize)]
+pub struct UpdateTaskArgs {
+    pub id: String,
+    pub title: Option<String>,
+    pub horizon: Option<String>,
+    pub due_at: Option<String>,
+    pub clear_due: Option<bool>,
+    pub notes: Option<String>,
+    pub remind_minutes_before: Option<i64>,
+    pub progress: Option<i64>,
+}
+
 #[tauri::command]
-pub fn update_task(
-    app: AppHandle,
-    db: State<DbState>,
-    id: String,
-    title: Option<String>,
-    horizon: Option<String>,
-    due_at: Option<String>,
-    clear_due: Option<bool>,
-    notes: Option<String>,
-    remind_minutes_before: Option<i64>,
-    progress: Option<i64>,
-) -> Result<(), String> {
-    db.0.lock().update_task(
-        &id,
-        title.as_deref(),
-        horizon.as_deref(),
-        due_at.as_deref(),
-        clear_due.unwrap_or(false),
-        notes.as_deref(),
-        remind_minutes_before,
-        progress,
-    )?;
+pub fn update_task(app: AppHandle, db: State<DbState>, args: UpdateTaskArgs) -> Result<(), String> {
+    let patch = TaskPatch {
+        title: args.title.as_deref(),
+        horizon: args.horizon.as_deref(),
+        due_at: args.due_at.as_deref(),
+        clear_due: args.clear_due.unwrap_or(false),
+        notes: args.notes.as_deref(),
+        remind_minutes_before: args.remind_minutes_before,
+        progress: args.progress,
+    };
+    db.0.lock().update_task(&args.id, patch)?;
     let _ = app.emit("tasks-changed", ());
     Ok(())
 }
@@ -198,6 +199,7 @@ pub fn set_overlay_expanded(
         // Expanded → interactive; collapsed → click-through until dwell arms again.
         let _ = win.set_ignore_cursor_events(!expanded);
     }
+    debug_assert_eq!(ctrl.is_expanded(), expanded);
     overlay::resize_overlay(&app, expanded)?;
     Ok(())
 }

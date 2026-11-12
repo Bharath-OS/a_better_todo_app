@@ -37,8 +37,9 @@ const TOP_INSET: f64 = 8.0;
 const NEAR_PAD: f64 = 24.0;
 const LEAVE_DEBOUNCE_MS: u64 = 250;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ArmState {
+    #[default]
     ClickThrough,
     Dwelling,
     Armed,
@@ -52,12 +53,6 @@ struct OverlayInner {
     leave_started: Option<Instant>,
     dwell_ms: u64,
     visible: bool,
-}
-
-impl Default for ArmState {
-    fn default() -> Self {
-        ArmState::ClickThrough
-    }
 }
 
 pub struct OverlayController {
@@ -100,6 +95,7 @@ impl OverlayController {
         self.inner.lock().visible = visible;
     }
 
+    #[must_use]
     pub fn is_expanded(&self) -> bool {
         self.inner.lock().arm == ArmState::Expanded
     }
@@ -211,12 +207,12 @@ fn tick_hit_test(app: &AppHandle, ctrl: &OverlayController) -> Result<Duration, 
     let scale = win.scale_factor().unwrap_or(1.0);
 
     // Convert to logical pixels relative to the overlay window.
-    let cx = cursor.x as f64 / scale;
-    let cy = cursor.y as f64 / scale;
-    let wx = outer_pos.x as f64 / scale;
-    let wy = outer_pos.y as f64 / scale;
-    let ww = outer_size.width as f64 / scale;
-    let wh = outer_size.height as f64 / scale;
+    let cx = cursor.x / scale;
+    let cy = cursor.y / scale;
+    let wx = f64::from(outer_pos.x) / scale;
+    let wy = f64::from(outer_pos.y) / scale;
+    let ww = f64::from(outer_size.width) / scale;
+    let wh = f64::from(outer_size.height) / scale;
 
     let near = point_near_rect(cx, cy, wx - NEAR_PAD, wy - NEAR_PAD, ww + NEAR_PAD * 2.0, wh + NEAR_PAD * 2.0);
     let over = point_in_rect(cx, cy, wx, wy, ww, wh);
@@ -270,20 +266,21 @@ fn tick_hit_test(app: &AppHandle, ctrl: &OverlayController) -> Result<Duration, 
         Ok(Duration::from_millis(100))
     } else {
         if let Some(left_at) = g.leave_started {
-            if now.duration_since(left_at) >= Duration::from_millis(LEAVE_DEBOUNCE_MS) {
-                if g.arm != ArmState::ClickThrough && g.arm != ArmState::Expanded {
-                    g.arm = ArmState::ClickThrough;
-                    g.dwell_started = None;
-                    let _ = win.set_ignore_cursor_events(true);
-                    let _ = app.emit(
-                        "overlay-arm",
-                        ArmPayload {
-                            armed: false,
-                            dwelling: false,
-                            progress: 0.0,
-                        },
-                    );
-                }
+            if now.duration_since(left_at) >= Duration::from_millis(LEAVE_DEBOUNCE_MS)
+                && g.arm != ArmState::ClickThrough
+                && g.arm != ArmState::Expanded
+            {
+                g.arm = ArmState::ClickThrough;
+                g.dwell_started = None;
+                let _ = win.set_ignore_cursor_events(true);
+                let _ = app.emit(
+                    "overlay-arm",
+                    ArmPayload {
+                        armed: false,
+                        dwelling: false,
+                        progress: 0.0,
+                    },
+                );
             }
         } else if g.arm == ArmState::Dwelling || g.arm == ArmState::Armed {
             g.leave_started = Some(now);
@@ -323,9 +320,12 @@ mod tests {
     fn arm_state_defaults_click_through() {
         let c = OverlayController::new();
         assert_eq!(c.inner.lock().arm, ArmState::ClickThrough);
+        assert!(!c.is_expanded());
         c.set_expanded(true);
         assert_eq!(c.inner.lock().arm, ArmState::Expanded);
+        assert!(c.is_expanded());
         c.set_expanded(false);
         assert_eq!(c.inner.lock().arm, ArmState::ClickThrough);
+        assert!(!c.is_expanded());
     }
 }

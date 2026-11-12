@@ -13,6 +13,17 @@ use std::path::Path;
 
 pub type DbResult<T> = Result<T, String>;
 
+#[derive(Debug, Default)]
+pub struct TaskPatch<'a> {
+    pub title: Option<&'a str>,
+    pub horizon: Option<&'a str>,
+    pub due_at: Option<&'a str>,
+    pub clear_due: bool,
+    pub notes: Option<&'a str>,
+    pub remind_minutes_before: Option<i64>,
+    pub progress: Option<i64>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Task {
     pub id: String,
@@ -50,6 +61,7 @@ impl Database {
         Ok(db)
     }
 
+    #[cfg(test)]
     pub fn open_in_memory() -> DbResult<Self> {
         let conn = Connection::open_in_memory().map_err(|e| e.to_string())?;
         let db = Self {
@@ -238,54 +250,44 @@ impl Database {
         Ok(task)
     }
 
-    pub fn update_task(
-        &self,
-        id: &str,
-        title: Option<&str>,
-        horizon: Option<&str>,
-        due_at: Option<&str>,
-        clear_due: bool,
-        notes: Option<&str>,
-        remind_minutes_before: Option<i64>,
-        progress: Option<i64>,
-    ) -> DbResult<()> {
-        if let Some(h) = horizon {
+    pub fn update_task(&self, id: &str, patch: TaskPatch<'_>) -> DbResult<()> {
+        if let Some(h) = patch.horizon {
             validate_horizon(h)?;
         }
         let conn = self.conn.lock();
-        if let Some(t) = title {
+        if let Some(t) = patch.title {
             conn.execute("UPDATE tasks SET title = ?1 WHERE id = ?2", params![t, id])
                 .map_err(|e| e.to_string())?;
         }
-        if let Some(h) = horizon {
+        if let Some(h) = patch.horizon {
             conn.execute(
                 "UPDATE tasks SET horizon = ?1 WHERE id = ?2",
                 params![h, id],
             )
             .map_err(|e| e.to_string())?;
         }
-        if clear_due {
+        if patch.clear_due {
             conn.execute("UPDATE tasks SET due_at = NULL WHERE id = ?1", params![id])
                 .map_err(|e| e.to_string())?;
-        } else if let Some(due) = due_at {
+        } else if let Some(due) = patch.due_at {
             conn.execute(
                 "UPDATE tasks SET due_at = ?1 WHERE id = ?2",
                 params![due, id],
             )
             .map_err(|e| e.to_string())?;
         }
-        if let Some(n) = notes {
+        if let Some(n) = patch.notes {
             conn.execute("UPDATE tasks SET notes = ?1 WHERE id = ?2", params![n, id])
                 .map_err(|e| e.to_string())?;
         }
-        if let Some(r) = remind_minutes_before {
+        if let Some(r) = patch.remind_minutes_before {
             conn.execute(
                 "UPDATE tasks SET remind_minutes_before = ?1 WHERE id = ?2",
                 params![r, id],
             )
             .map_err(|e| e.to_string())?;
         }
-        if let Some(p) = progress {
+        if let Some(p) = patch.progress {
             conn.execute(
                 "UPDATE tasks SET progress = ?1 WHERE id = ?2",
                 params![p, id],
