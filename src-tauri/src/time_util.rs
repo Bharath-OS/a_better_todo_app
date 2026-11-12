@@ -102,4 +102,41 @@ mod tests {
         let id = local_day_id(local_now, 0);
         assert_eq!(id, local_now.date_naive());
     }
+
+    #[test]
+    fn parse_rejects_out_of_range() {
+        assert_eq!(parse_day_starts_at("24:00"), 0);
+        assert_eq!(parse_day_starts_at("12:60"), 0);
+        assert_eq!(parse_day_starts_at("-1:00"), 0);
+        assert_eq!(parse_day_starts_at(""), 0);
+        assert_eq!(parse_day_starts_at("noon"), 0);
+    }
+
+    #[test]
+    fn exactly_at_day_start_belongs_to_new_day() {
+        let at_boundary = Local
+            .with_ymd_and_hms(2026, 11, 12, 4, 0, 0)
+            .single()
+            .expect("local");
+        assert_eq!(
+            local_day_id(at_boundary, 240),
+            NaiveDate::from_ymd_opt(2026, 11, 12).unwrap()
+        );
+        let just_before = Local
+            .with_ymd_and_hms(2026, 11, 12, 3, 59, 0)
+            .single()
+            .expect("local");
+        assert_eq!(
+            local_day_id(just_before, 240),
+            NaiveDate::from_ymd_opt(2026, 11, 11).unwrap()
+        );
+    }
+
+    #[test]
+    fn today_local_day_id_format() {
+        let id = today_local_day_id("00:00");
+        assert_eq!(id.len(), 10);
+        assert_eq!(&id[4..5], "-");
+        assert_eq!(&id[7..8], "-");
+    }
 }

@@ -653,6 +653,79 @@ mod tests {
     }
 
     #[test]
+    fn rejects_invalid_horizon() {
+        let db = Database::open_in_memory().unwrap();
+        let err = db
+            .create_task("bad", "x", "quarterly", None, None, None)
+            .unwrap_err();
+        assert!(err.contains("invalid horizon"), "{err}");
+    }
+
+    #[test]
+    fn empty_title_still_stores_row() {
+        // Product may validate in UI; DB layer currently accepts empty string —
+        // document current contract so a later required-title change is intentional.
+        let db = Database::open_in_memory().unwrap();
+        let t = db.create_task("e1", "", "daily", None, None, None).unwrap();
+        assert_eq!(t.title, "");
+    }
+
+    #[test]
+    fn clear_due_removes_due_at() {
+        let db = Database::open_in_memory().unwrap();
+        db.create_task(
+            "d2",
+            "Has due",
+            "daily",
+            Some("2026-11-12T17:00:00"),
+            None,
+            Some(10),
+        )
+        .unwrap();
+        db.update_task(
+            "d2",
+            TaskPatch {
+                clear_due: true,
+                ..TaskPatch::default()
+            },
+        )
+        .unwrap();
+        let tasks = db.list_tasks(None).unwrap();
+        assert!(tasks[0].due_at.is_none());
+    }
+
+    #[test]
+    fn delete_missing_id_is_ok() {
+        let db = Database::open_in_memory().unwrap();
+        db.delete_task("no-such-id").unwrap();
+    }
+
+    #[test]
+    fn toggle_missing_id_errors() {
+        let db = Database::open_in_memory().unwrap();
+        assert!(db.toggle_task("missing").is_err());
+    }
+
+    #[test]
+    fn pro_unlock_allows_goal_horizon() {
+        let db = Database::open_in_memory().unwrap();
+        db.update_setting("entitlement", "pro").unwrap();
+        let t = db
+            .create_task("g1", "Ship Todly 1.0", "goal", None, None, None)
+            .unwrap();
+        assert_eq!(t.horizon, "goal");
+    }
+
+    #[test]
+    fn seed_demo_is_idempotent_when_nonempty() {
+        let db = Database::open_in_memory().unwrap();
+        db.create_task("keep", "Keep me", "daily", None, None, None)
+            .unwrap();
+        db.seed_demo_if_empty().unwrap();
+        assert_eq!(db.list_tasks(None).unwrap().len(), 1);
+    }
+
+    #[test]
     fn migration_from_legacy_period_table() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
